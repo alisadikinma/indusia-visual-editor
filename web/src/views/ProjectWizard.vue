@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRoute } from "vue-router";
 
 import BomTable from "../components/BomTable.vue";
+import PreLabelPanel from "../components/PreLabelPanel.vue";
 import { useWizardStore } from "../stores/wizard";
 
 const route = useRoute();
@@ -139,5 +140,20 @@ function onDragLeave() {
     </p>
 
     <BomTable :items="store.items" />
+
+    <section class="mt-8" data-testid="wizard-step-2">
+      <h2 class="mb-4 font-sans text-lg font-semibold text-text-primary">
+        Langkah 2 — Pre-label Gemma 4
+      </h2>
+      <p class="mb-3 text-sm text-text-secondary">
+        Jalankan asisten pre-label setelah BOM + Golden Sample (atas dan/atau
+        bawah) sudah di-upload. Hasilnya akan muncul sebagai bounding box
+        pre-draw di labeling canvas.
+      </p>
+      <div class="grid gap-3 md:grid-cols-2">
+        <PreLabelPanel :project-id="projectId" side="top" />
+        <PreLabelPanel :project-id="projectId" side="bottom" />
+      </div>
+    </section>
   </main>
 </template>
