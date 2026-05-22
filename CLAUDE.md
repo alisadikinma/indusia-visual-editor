@@ -13,7 +13,8 @@
 | Primary user | MI division operator / supervisor at PCB factories (non-coder) |
 | Repo root | `D:\Projects\indusia-visual-editor` |
 | Status | M0 ✓ · M1 ✓ · M2 ✓ · M3 ✓ · M4 ✓ (4.1 detector→node mapping, 4.2 subgraph builder, 4.3 top-config + defaults, 4.4 atomic writer, 4.5 orchestrator, 4.6 `/api/projects/{id}/adapt` route + `adapt_runs` table); next: M5 pre-label assistant (needs gaspol-plan sub-phase breakdown) |
-| Plan | [docs/plans/2026-05-22-visual-editor-mvp.md](docs/plans/2026-05-22-visual-editor-mvp.md) |
+| Plan (M0–M4) | [docs/plans/2026-05-22-visual-editor-mvp.md](docs/plans/2026-05-22-visual-editor-mvp.md) |
+| Plan (M5–M14) | [docs/plans/2026-05-22-visual-editor-mvp-m5-m14.md](docs/plans/2026-05-22-visual-editor-mvp-m5-m14.md) |
 | Adoption spec | [docs/specs/label-studio-adoption.md](docs/specs/label-studio-adoption.md) |
 | LSF build spec | [docs/specs/lsf-build.md](docs/specs/lsf-build.md) |
 | Graphflow schema | [docs/specs/graphflow-config-schema.md](docs/specs/graphflow-config-schema.md) |
