@@ -98,6 +98,11 @@ class Project(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    adapt_runs: Mapped[list["AdaptRun"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (UniqueConstraint("slug", name="uq_projects_slug"),)
 
@@ -211,3 +216,37 @@ class ProposedPipelineRow(Base):
             "project_id", "version", name="uq_proposed_pipelines_project_version"
         ),
     )
+
+
+class AdaptRun(Base):
+    """One row per `/api/projects/{id}/adapt` invocation. Records where
+    the graphflow model dir was written so the operator can audit
+    history without scanning the filesystem."""
+
+    __tablename__ = "adapt_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    pcb_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    model_dir: Mapped[str] = mapped_column(Text, nullable=False)
+    inspected_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="ok",
+        server_default="ok",
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    project: Mapped[Project] = relationship(back_populates="adapt_runs")

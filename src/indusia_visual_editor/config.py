@@ -30,6 +30,10 @@ class AppConfig(BaseSettings):
     ollama_model_prelabel: str = "gemma4:31b"
     ollama_timeout: int = 120  # seconds
 
+    # Phase 4.6 — graphflow model directory root (shared filesystem
+    # contract between visual-editor and auto-inspect-service).
+    models_root: str = "./models"
+
 
 from functools import lru_cache
 

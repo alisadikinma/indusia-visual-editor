@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from indusia_visual_editor import __version__
 from indusia_visual_editor.config import get_config
+from indusia_visual_editor.routes.adapt import router as adapt_router
 from indusia_visual_editor.routes.assets import router as assets_router
 from indusia_visual_editor.routes.bom import router as bom_router
 from indusia_visual_editor.routes.llm import router as llm_router
@@ -90,6 +91,7 @@ app.include_router(projects_router)
 app.include_router(assets_router)
 app.include_router(bom_router)
 app.include_router(llm_router)
+app.include_router(adapt_router)
 
 
 @app.get("/health")
