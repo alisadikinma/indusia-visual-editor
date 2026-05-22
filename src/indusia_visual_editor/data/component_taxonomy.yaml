@@ -1,0 +1,71 @@
+# Component taxonomy — MI/SMT heuristic classifier source of truth.
+#
+# Phase 2.2b: classifier picks `mi_likely` + `component_type` for each
+# BOM row at parse time. This file is user-editable so factory operators
+# can extend it without touching code (e.g., add a new package family
+# their suppliers ship). Pure regex; no executable logic here.
+#
+# Matching rules (see services/asset/mi_classifier.py):
+#   1. Try `specific_tht` patterns first → set component_type to the key.
+#   2. Try `specific_smd` patterns → component_type smd_<key>.
+#   3. Fall back to generic `smd_patterns` → smd_generic, mi_likely=False.
+#   4. Fall back to generic `tht_patterns` → tht_generic, mi_likely=True.
+#   5. No package match → check designator_prefix_mi → mi_likely=True
+#      with component_type from prefix map.
+#   6. Otherwise default mi_likely=False (modern parts are usually SMD).
+#
+# Case-insensitive. Patterns are Python `re` syntax, anchored with
+# search() not match() so substrings hit (e.g., "0805" inside "0805-R").
+
+# --- Specific THT (through-hole, MI line) ---
+# These set a SPECIFIC component_type so the canvas can color-code.
+specific_tht:
+  electrolytic_cap: "^(radial|axial|electrolytic|elec|e-?cap)"
+  dip_ic: "^(p?dip-?\\d+|sdip-?\\d+)$"
+  connector: "^(header|hdr|conn|terminal|term|pin|jumper|jp)"
+  transformer: "^(transfo|xfmr|toroid)"
+  relay: "^relay"
+  to_package: "^(to-?\\d+)$"
+
+# --- Specific SMD families ---
+specific_smd:
+  smd_chip_passive: "^(0201|0402|0603|0805|1206|1210|2010|2512)$"
+  smd_sot: "^sot-?\\d+"
+  smd_soic: "^soic-?\\d+"
+  smd_qfn: "^qfn-?\\d*"
+  smd_qfp: "^(qfp|lqfp|tqfp|pqfp)-?\\d*"
+  smd_bga: "^(bga|lga|wlcsp)-?\\d*"
+  smd_tssop: "^tssop-?\\d*"
+  smd_dfn_mlf: "^(dfn|mlf)-?\\d*"
+
+# --- Generic SMD fallback patterns ---
+# Hit any of these → smd_generic, mi_likely=False.
+smd_patterns:
+  - "^(0201|0402|0603|0805|1206|1210|2010|2512)"
+  - "sot-?\\d+"
+  - "soic-?\\d+"
+  - "^(qfn|qfp|lqfp|tqfp|pqfp|bga|lga|wlcsp|tssop|dfn|mlf)-?\\d*"
+  - "^sm[abc]$"
+
+# --- Generic THT fallback patterns ---
+# Hit any of these → tht_generic, mi_likely=True.
+tht_patterns:
+  - "^(p?dip|sdip|sip|zip)-?\\d+"
+  - "^to-?\\d+"
+  - "^(radial|axial)"
+  - "^(header|hdr|conn|term|pin|jumper|jp|relay|fuse|xtal-?th|transfo|xfmr)"
+
+# --- Designator prefix hints ---
+# Used only when the package cell is empty / unrecognized. Designator
+# alone isn't conclusive (R could be SMD 0805 or THT axial), so we
+# only consult this map when we have nothing better.
+designator_prefix_mi:
+  J: connector
+  CN: connector
+  JP: connector
+  X: connector
+  SW: switch
+  T: transformer
+  L_THT: inductor
+  RV: variable_resistor
+  D_LED_THT: led_tht

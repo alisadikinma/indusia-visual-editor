@@ -1,0 +1,39 @@
+# Hand-rendered example of an auto-inspect-service TOP-LEVEL config.yaml.
+# Source: derived from `auto-inspect-service/README.md` §2 "Layout konfigurasi per model".
+# This is the file passed to `POST /api/models/{name}/load`. Sibling files
+# `locations.yaml`, `settings.yaml`, and `components/*.yaml` are loaded by the
+# service automatically based on the config_path parent directory.
+#
+# Layer convention:
+#   - This file (top-level) carries the pipeline `name` + alignment / fiducial
+#     stage + references to per-component subgraphs via `type: graph` + `path`.
+#   - Each `components/*.yaml` is a subgraph WITHOUT a `name` (just `nodes` +
+#     `edges`) — see tests/spike/fixtures/missing_yolo_rendered.yaml.
+name: "board-NV7320H-1"
+
+nodes:
+  data:
+    type: input
+  fiducial:
+    type: fiducial_detector
+    params:
+      path: "assets/fiducial_TL.png"
+  component-U7:
+    type: graph
+    path: "components/comp-U7.yaml"
+  component-C4:
+    type: graph
+    path: "components/comp-C4.yaml"
+  output:
+    type: merge_result
+
+edges:
+  data:
+    - fiducial
+  fiducial:
+    - component-U7
+    - component-C4
+  component-U7:
+    - output
+  component-C4:
+    - output

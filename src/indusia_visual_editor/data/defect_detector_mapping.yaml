@@ -1,0 +1,19 @@
+# Defect criterion → detector preset mapping (Phase 2.2c).
+#
+# Single source of truth: editing this file changes which detectors
+# auto-inspect-service will be told to instantiate per criterion. The
+# nine canonical criteria here mirror the UI choice list in the
+# labeling canvas (M6) and the README glossary (CLAUDE.md §8).
+#
+# `solder_short` is whole-side only. The derive module enforces this
+# by rejecting it when scope_mode != 'whole_side'.
+
+missing_component:     [yolo]
+orientation:           [yolo, orientation_classifier]
+polarity_flip:         [yolo, orientation_classifier, polarity_template]
+connector_pin_bending: [yolo, anomalib_roi, lifted_pin]
+missing_pin_connector: [yolo_fine_grained, pin_count_check]
+lifted_pin:            [lifted_pin]
+wrong_value:           [yolo, ocr]
+misalignment:          [border_alignment, anomalib_roi]
+solder_short:          [anomalib_whole_side, threshold]

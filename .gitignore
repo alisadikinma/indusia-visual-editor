@@ -1,6 +1,12 @@
 # --- Sensitive: customer data + legacy code ---
 data/
 old-code/
+# Carve-out: in-tree, committed taxonomy/config YAML that lives under
+# src/indusia_visual_editor/data/ — these are app-shipped data files,
+# not customer data. The blanket `data/` ignore is for top-level
+# fixture / customer dumps only.
+!src/indusia_visual_editor/data/
+!src/indusia_visual_editor/data/**
 
 # --- Python ---
 __pycache__/
@@ -36,6 +42,7 @@ web/.next/
 web/.nuxt/
 web/coverage/
 web/.turbo/
+web/*.tsbuildinfo
 
 # --- LSF vendored bundle (built artifact, not source) ---
 web/public/lsf/main.js
@@ -54,6 +61,7 @@ license/
 storage/
 logs/
 .cache/
+.spike-logs/
 *.log
 model_state.json
 
@@ -68,9 +76,12 @@ model_state.json
 Thumbs.db
 desktop.ini
 
+# --- Claude Code + Playwright MCP local caches ---
+.claude/
+.playwright-mcp/
+
 # --- Poetry ---
-poetry.lock
-# (we WILL commit poetry.lock once it's deterministic — remove this line later)
+# poetry.lock IS committed (standard practice, deterministic installs).
 
 # --- Docker ---
 docker-compose.override.yml
