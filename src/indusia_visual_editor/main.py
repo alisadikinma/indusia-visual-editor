@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from indusia_visual_editor import __version__
 from indusia_visual_editor.config import get_config
 from indusia_visual_editor.routes.assets import router as assets_router
+from indusia_visual_editor.routes.bom import router as bom_router
 from indusia_visual_editor.routes.projects import router as projects_router
 from indusia_visual_editor.services.asset.bom_parser import BomParseError
 from indusia_visual_editor.services.asset.image_store import (
@@ -80,6 +81,7 @@ async def _bom_parse_failed(request: Request, exc: BomParseError):
 
 app.include_router(projects_router)
 app.include_router(assets_router)
+app.include_router(bom_router)
 
 
 @app.get("/health")
