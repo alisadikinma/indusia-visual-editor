@@ -12,7 +12,7 @@
 | One-line | Factory-user-driven PCB inspection platform — BOM + golden sample → production inspection in hours, no YAML, no CLI |
 | Primary user | MI division operator / supervisor at PCB factories (non-coder) |
 | Repo root | `D:\Projects\indusia-visual-editor` |
-| Status | M0 ✓ complete · M1 Phase 1.1 ✓ (schema + Alembic baseline); next: Phase 1.2 Projects CRUD |
+| Status | M0 ✓ complete · M1 Phase 1.1 ✓ schema · Phase 1.2 ✓ Projects CRUD; next: Phase 1.3 Asset upload |
 | Plan | [docs/plans/2026-05-22-visual-editor-mvp.md](docs/plans/2026-05-22-visual-editor-mvp.md) |
 | Adoption spec | [docs/specs/label-studio-adoption.md](docs/specs/label-studio-adoption.md) |
 | LSF build spec | [docs/specs/lsf-build.md](docs/specs/lsf-build.md) |
@@ -24,8 +24,8 @@ Only commit history is authoritative — never invent state. As of 2026-05-22:
 
 | Layer | Built | Not yet built |
 |---|---|---|
-| Backend | `pyproject.toml`, `src/indusia_visual_editor/{__init__,config,main}.py`, `GET /health`, `db/{models,session}.py` with Project/Asset/BomItem + AsyncSession factory | All routes besides /health, services, LLM client, asset storage |
-| Tests | 7 tests pass: health, db_connection, 3× db_models (project+asset+bom roundtrip, slug uniqueness, default inspect_scope), 2× graphflow schema spike | everything else |
+| Backend | FastAPI app, `GET /health`, `/api/projects` CRUD (POST/list/GET/PUT/DELETE), DB models (Project/Asset/BomItem), `get_session` async dep, exception handlers for 404/409/422 all return `{status, message, data}` shape, `utils.responses.success/failed` helpers | Asset upload (Phase 1.3), BOM parser (M2), LLM client (M3), labels (M6) |
+| Tests | 14 tests pass: health, db_connection, 3× db_models, 7× projects CRUD (incl 409 + 404 envelope), 2× graphflow spike. `tests/conftest.py` clears `get_engine` lru_cache per-test (avoids event-loop bleed). | everything else |
 | Frontend | Vue 3 + Vite 5 + TS scaffold at `web/` with router, Pinia, Tailwind, Konva deps; 1 Vitest test passes; `/` route → Dashboard.vue stub | Real Dashboard (Phase 1.4), Wizard (Phase 2.3), LSF embed (M6) |
 | Docker | `docker-compose.dev.yml` (postgres:16-alpine on host port 5433, named volume `ive-postgres-data`), dev `Dockerfile.api` + `web/Dockerfile`, `scripts/dev-{up,down}.ps1` helpers | Production Dockerfiles + Traefik (M14) |
 | DB | Alembic baseline 0001 applied: `projects`, `assets`, `bom_items` tables live with UUID PKs, TIMESTAMPTZ, JSONB extra, CHECK-constraint enums. Downgrade→upgrade cycle clean. | Future migrations per phase |
