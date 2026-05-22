@@ -881,6 +881,276 @@ Production Dockerfiles, Traefik config, Postgres backup strategy, log shipping, 
 
 ---
 
+## M4 — Detailed Breakdown (planner adapter → graphflow writer)
+
+> **For Claude:** REQUIRED SKILL: Use `gaspol-execute` to implement this section.
+> **CRITICAL:** This plan specifies real integrations. Never substitute placeholders for real data sources without explicit user approval.
+
+### Goal
+
+Convert `(ProposedPipeline + LSF annotation + bom_items.detector_presets)` into a graphflow model directory that `auto-inspect-service` can load via `POST /api/models/{name}/load`. M4 is the bridge between the LLM-produced plan and the runtime engine — it materializes the on-disk YAML tree documented in [`docs/specs/graphflow-config-schema.md`](../specs/graphflow-config-schema.md).
+
+M4 ships **standalone with synthetic LSF JSON** in tests. M6 (labeling canvas) will wire real annotations through later. This decouples adapter correctness from canvas UX.
+
+### Architecture Context (from CLAUDE.md + Phase 0.2 spike)
+
+| Concern | Source | Use |
+|---|---|---|
+| Detector preset names | `data/defect_detector_mapping.yaml` (Phase 2.2c) | Vocabulary for which graphflow nodes to emit |
+| LSF annotation parser | `services/inspect_scope/derive.derive_inspect_scope` (Phase 2.2c) | Already groups by region + emits `BomItemUpdate.detector_presets` — reuse directly |
+| Latest project plan | `proposed_pipelines` table (Phase 3.4) | Pulls `pcb_model` + `fiducial_strategy` for top-level config |
+| BOM rows | `bom_items` table (Phase 1.1) | `designator`, `component_type`, `mi_likely` for subgraph naming |
+| Graphflow YAML shape | `docs/specs/graphflow-config-schema.md` §1–§3 | Authoritative top-level + subgraph schema |
+| Node type registry | 49 names listed in spike §3 | Lock M4 vocabulary to the spike §6.1 subset |
+| Model dir layout | `<root>/<pcb_name>/{config.yaml, locations.yaml, settings.yaml, components/*.yaml, assets/}` | Filesystem writer target |
+
+### Architecture Decision (locked at M4 start)
+
+**ADR:** M4 writes to a shared filesystem path `IVE_MODELS_ROOT` rather than POSTing to a new `auto-inspect-service` REST endpoint.
+
+- **Why:** simplest interface, easy to inspect / debug / version-control, no auth surface to harden in v1. Docker dev mounts the same volume into both services; prod uses rsync or shared NFS.
+- **Rejected:** REST `/api/setup/` (would require new endpoint in `auto-inspect-service` that we promised in §3 NOT to modify in v1). Subprocess `ais setup` (adds subprocess lifecycle pain).
+- **Tradeoff:** services must agree on path semantics out-of-band. Acceptable — we already share filesystem for `IVE_STORAGE_ROOT` golden images, this is the same model.
+
+### Data Integration Map
+
+| Feature | Data Source | Hook/API | Exists? | Action |
+|---|---|---|---|---|
+| Detector → graphflow nodes mapping | `data/detector_to_nodes.yaml` (new) | new `services/adapter/node_map.py` | No | **Create new** |
+| `derive_inspect_scope` (LSF → BomItemUpdate) | `services/inspect_scope/derive.py` | direct import | **Yes** | Use existing (Phase 2.2c) |
+| BOM rows with `component_type` + `mi_likely` | `bom_items` table | SQLAlchemy `select(BomItem)` | **Yes** | Use existing |
+| Latest ProposedPipeline (pcb_model, fiducial_strategy) | `proposed_pipelines` table | SQLAlchemy + version `desc()` | **Yes** | Use existing (Phase 3.4) |
+| Per-component subgraph builder (pure fn) | n/a (pure function over inputs) | new `services/adapter/subgraph.py` | No | **Create new** |
+| Top-level config builder (pure fn) | n/a (pure function over inputs) | new `services/adapter/top_config.py` | No | **Create new** |
+| Default `locations.yaml` template | `src/indusia_visual_editor/data/default_locations.yaml` | new YAML file | No | **Create new** (1 frame top + 1 bottom; M6 refines) |
+| Default `settings.yaml` template | `src/indusia_visual_editor/data/default_settings.yaml` | new YAML file | No | **Create new** (copy from auto-inspect-service known-good) |
+| Atomic filesystem writer | `tempfile.TemporaryDirectory` + `shutil.move` | new `services/adapter/writer.py` | No | **Create new** |
+| Adapter orchestrator (project state → on-disk dir) | composes all above | new `services/adapter/compose.py` | No | **Create new** |
+| `adapt_runs` table (history of adapter invocations) | new Alembic migration `0003_adapt_runs.py` | new SQLAlchemy model | No | **Create new** |
+| Adapter route POST/GET | new `routes/adapt.py` | new file | No | **Create new** |
+| `IVE_MODELS_ROOT` env var (default `./models`) | `config.AppConfig` | extend existing | **Yes** | Extend existing (`config.py`) |
+| LSAnnotation pydantic schema | `services/inspect_scope/derive.LSAnnotation` | direct import | **Yes** | Use existing (Phase 2.2c) |
+| `ProposedPipeline` schema | `services/llm/schemas.ProposedPipeline` | direct import | **Yes** | Use existing (Phase 3.2) |
+
+### Phase 4.1: Detector preset → graphflow node-set mapping
+
+**Estimated time:** 12 min
+**Files:**
+- Create: `src/indusia_visual_editor/data/detector_to_nodes.yaml`
+- Create: `src/indusia_visual_editor/services/adapter/__init__.py`
+- Create: `src/indusia_visual_editor/services/adapter/node_map.py`
+- Test: `tests/services/adapter/__init__.py`, `tests/services/adapter/test_node_map.py`
+
+**Steps:**
+1. Write failing test `tests/services/adapter/test_node_map.py::test_nodes_for_detector_returns_known_graphflow_node_types`. Expected error: `ModuleNotFoundError: No module named 'indusia_visual_editor.services.adapter'`.
+2. Run, confirm RED for that exact reason.
+3. Author `data/detector_to_nodes.yaml` mapping each of the 13 detector preset names (`yolo`, `yolo_fine_grained`, `anomalib_roi`, `anomalib_whole_side`, `ocr`, `barcode`, `template_match`, `polarity_template`, `orientation_classifier`, `lifted_pin`, `pin_count_check`, `border_alignment`, `threshold`) → ordered list of graphflow node specs `{type, params_default}` drawn from the 49-name registry (spike §3). Lock to spike §6.1 subset.
+4. Implement `node_map.py::nodes_for_detector(preset: str) -> list[NodeSpec]`. `NodeSpec` is a pydantic model with `type: str` (must be in the registry) + `params: dict | None`. Raise `UnknownDetectorPreset` for typos.
+5. Add 5 tests: each major preset (yolo, lifted_pin, ocr, polarity_template, anomalib_whole_side) returns a non-empty list whose `type` values are all in the registry. Plus an unknown-preset → `UnknownDetectorPreset` test.
+6. Run tests, confirm GREEN.
+7. Commit: `feat(adapter): map detector presets to graphflow node specs`
+
+**Verification:**
+- [ ] All 6 tests pass
+- [ ] All 13 detector presets from `data/defect_detector_mapping.yaml` have an entry in `detector_to_nodes.yaml`
+- [ ] Every node `type` in the mapping is in the 49-name registry (test enforces this)
+- [ ] Unknown preset raises typed exception (never silent default)
+- [ ] No placeholder/TODO comments in new code
+
+### Phase 4.2: Per-component subgraph builder
+
+**Estimated time:** 15 min
+**Files:**
+- Create: `src/indusia_visual_editor/services/adapter/subgraph.py`
+- Test: `tests/services/adapter/test_subgraph.py`
+
+**Steps:**
+1. Write failing test `test_build_component_subgraph_emits_valid_graphflow_subgraph_dict`. Expected: `ImportError`.
+2. Run, see fail.
+3. Implement `build_component_subgraph(designator: str, detector_presets: list[str], bbox: tuple[float,float,float,float] | None = None) -> dict` returning `{nodes: {...}, edges: {...}}` where:
+   - `data: {type: input}` — entry
+   - `crop: {type: yolo_crop, params: {classes: designator, expand_ratio: 0.2}}` if bbox is None, otherwise `{type: static_box, params: {bbox: bbox}}` (per spike §3 "Cropping" + "Detectors" categories)
+   - One node per detector preset, named `<preset_name>` with params from `nodes_for_detector`
+   - `output: {type: merge_result}`
+   - Edges wire `data → crop → [all detector nodes in parallel] → output`
+4. Tests cover: missing_component preset → yolo_crop + yolo_estimator + transform; lifted_pin → lifted_pin_detector node present; ocr → ocr_model node; multi-preset → all detectors fan out from crop and fan in to output; empty presets list → still has data + output (zero-defect skeleton).
+5. Roundtrip test: `yaml.safe_dump` then `yaml.safe_load` must produce an identical dict (no custom types leaking).
+6. Edge validation test: every edge target must be a declared node name; every edge source must be a declared node name.
+7. Run tests, confirm pass.
+8. Commit: `feat(adapter): per-component subgraph builder for graphflow YAML`
+
+**Verification:**
+- [ ] 5 tests pass
+- [ ] Edge validation invariant enforced (test asserts no dangling refs)
+- [ ] YAML roundtrip clean
+- [ ] No node `type` outside the 49-name registry (test asserts via `node_map` known set)
+- [ ] No placeholder/TODO comments
+
+### Phase 4.3: Top-level config + locations + settings composer
+
+**Estimated time:** 15 min
+**Files:**
+- Create: `src/indusia_visual_editor/data/default_locations.yaml`
+- Create: `src/indusia_visual_editor/data/default_settings.yaml`
+- Create: `src/indusia_visual_editor/services/adapter/top_config.py`
+- Test: `tests/services/adapter/test_top_config.py`
+
+**Steps:**
+1. Write failing test `test_build_top_config_wires_fiducial_then_subgraphs_then_merge`. Expected: `ImportError`.
+2. Run, see fail.
+3. Copy known-good camera/lighting baseline from `D:\Projects\Indusia-Inspection\auto-inspect-service\prod\configs\` (whichever board has stable settings) into `data/default_settings.yaml`. If no source is available, ship a minimal `{camera: {gain: 1.0, exposure_ms: 30, white_balance: auto}, lighting: {brightness: 0.7}}` and TODO-via-issue an upstream verification — but DO NOT leave hardcoded magic numbers without the file marker.
+4. Author `data/default_locations.yaml` with two frames: `TOP-01` at `{x: 0, y: 0, unit: mm}` and `BOT-01` at `{x: 0, y: 0, unit: mm}` — M6 refines spatial layout.
+5. Implement `build_top_config(pcb_name: str, fiducial_strategy: Literal['circle','orb','yolo','threshold'], component_designators: list[str]) -> dict` returning:
+   ```yaml
+   name: <pcb_name>
+   nodes:
+     data:     {type: input}
+     fiducial: {type: <fiducial_strategy>_alignment_detector OR fiducial_detector}
+     component-<D>: {type: graph, path: components/comp-<D>.yaml} for each designator
+     output:   {type: merge_result}
+   edges:
+     data:     [fiducial]
+     fiducial: [component-<D>, ...]
+     component-<D>: [output]
+   ```
+   Map fiducial_strategy → node type per spike §3: `circle` → `circle_alignment_detector`, `orb` → `orb_alignment_detector`, `yolo` → `yolo_fiducial_detector`, `threshold` → `threshold_fiducial_detector`.
+6. Implement `load_default_locations() -> dict` and `load_default_settings() -> dict` (simple `yaml.safe_load` of the data files).
+7. Tests: 4 fiducial strategies → correct node type; 3 designators → 3 subgraph refs + edges; default locations has top+bottom frames; default settings has camera + lighting keys.
+8. Run tests, confirm pass.
+9. Commit: `feat(adapter): top-level config + default locations/settings composer`
+
+**Verification:**
+- [ ] 5 tests pass
+- [ ] All 4 fiducial strategies map to registered node types (test asserts via spike §3 list)
+- [ ] No designator collision in node names
+- [ ] `default_settings.yaml` has source provenance comment (where it came from)
+- [ ] No placeholder/TODO comments in new code
+
+### Phase 4.4: Atomic filesystem writer
+
+**Estimated time:** 12 min
+**Files:**
+- Create: `src/indusia_visual_editor/services/adapter/writer.py`
+- Test: `tests/services/adapter/test_writer.py`
+
+**Steps:**
+1. Write failing test `test_write_model_dir_creates_full_tree_atomically`. Expected: `ImportError`.
+2. Run, see fail.
+3. Implement `write_model_dir(target_root: Path, pcb_name: str, top_config: dict, locations: dict, settings: dict, subgraphs: dict[str, dict]) -> Path`:
+   - Build under a `tempfile.TemporaryDirectory()` first: `<tmp>/<pcb_name>/{config.yaml, locations.yaml, settings.yaml, components/comp-<D>.yaml, assets/}` (assets is empty dir for now).
+   - All YAML written with `yaml.safe_dump(sort_keys=False)`.
+   - After successful build: if `<target_root>/<pcb_name>` exists, rename it to `<pcb_name>.bak-<timestamp>` (don't destroy prior work); then `shutil.move(<tmp>/<pcb_name>, <target_root>/<pcb_name>)`.
+   - Return the final absolute path.
+4. Tests: write a tree → verify all 4 files + `components/` dir exist + `assets/` dir exists. Roundtrip: `yaml.safe_load` each emitted file → dict matches input. Backup test: write twice → second call moves first to `.bak-*`.
+5. Edge case test: partial write failure (e.g. unwritable target) leaves target_root untouched (atomicity check via mocked `shutil.move` raising mid-call).
+6. Run tests, confirm pass.
+7. Commit: `feat(adapter): atomic on-disk writer for graphflow model directories`
+
+**Verification:**
+- [ ] 4 tests pass including atomicity check
+- [ ] Existing model dir backed up, never silently overwritten
+- [ ] YAML files round-trip clean
+- [ ] No partial writes visible at `target_root` on failure
+- [ ] No placeholder/TODO comments
+
+### Phase 4.5: Adapter orchestrator — project state → on-disk dir
+
+**Estimated time:** 15 min
+**Files:**
+- Create: `src/indusia_visual_editor/services/adapter/compose.py`
+- Test: `tests/services/adapter/test_compose.py` (uses Postgres — skipif `IVE_DATABASE_URL` not set)
+
+**Steps:**
+1. Write failing test `test_compose_from_project_writes_full_tree_from_db_state`. Expected: `ImportError`.
+2. Run, see fail.
+3. Implement `compose_from_project(session: AsyncSession, project_id: UUID, lsf_annotation: LSAnnotation, models_root: Path) -> ComposeResult`:
+   - Pseudocode:
+     ```
+     plan_row = SELECT latest ProposedPipelineRow WHERE project_id = ... ORDER BY version DESC LIMIT 1
+        → if None: raise NoPlanError (route maps to 422)
+     bom_rows = SELECT BomItem WHERE project_id = ... (for designator → component_type lookup)
+     updates = derive_inspect_scope(lsf_annotation)  # reuse Phase 2.2c
+     inspected = [u for u in updates if u.inspect_scope == 'inspected']
+        → if empty: raise NoInspectedRegionsError (route maps to 422)
+     subgraphs = {u.designator: build_component_subgraph(u.designator, u.detector_presets) for u in inspected}
+     top = build_top_config(pcb_name=plan.pcb_model, fiducial_strategy=plan.fiducial_strategy, component_designators=list(subgraphs))
+     locations = load_default_locations()
+     settings = load_default_settings()
+     model_dir = write_model_dir(models_root, plan.pcb_model, top, locations, settings, subgraphs)
+     return ComposeResult(model_dir=model_dir, inspected_count=len(inspected), pcb_name=plan.pcb_model)
+     ```
+4. Tests (DB-backed): seed project + BOM (2 rows R1+C4) + ProposedPipelineRow + synthetic LSAnnotation with R1=inspected[missing_component], C4=skipped. Call compose. Assert model_dir under tmp_path exists, contains comp-R1.yaml but NOT comp-C4.yaml (skipped), top config lists only R1.
+5. Error tests: no ProposedPipelineRow → `NoPlanError`; all regions skipped → `NoInspectedRegionsError`.
+6. Run tests, confirm pass.
+7. Commit: `feat(adapter): orchestrator composes graphflow tree from project state + LSF annotation`
+
+**Verification:**
+- [ ] 3 tests pass against real Postgres
+- [ ] Skipped regions excluded from output tree (test asserts no `comp-C4.yaml` when C4 was skipped)
+- [ ] Empty inspect list → typed exception, no half-written tree
+- [ ] Reuses `derive_inspect_scope` (Phase 2.2c) — no duplicated LSF parsing logic
+- [ ] No placeholder/TODO comments
+
+### Phase 4.6: Adapter route POST + persistence + GET history
+
+**Estimated time:** 18 min
+**Files:**
+- Create: `alembic/versions/0003_adapt_runs.py`
+- Modify: `src/indusia_visual_editor/db/models.py` (add `AdaptRun` model + relationship on Project)
+- Create: `src/indusia_visual_editor/schemas/adapt.py`
+- Create: `src/indusia_visual_editor/routes/adapt.py`
+- Modify: `src/indusia_visual_editor/main.py` (include router + exception handlers for NoPlanError / NoInspectedRegionsError)
+- Modify: `src/indusia_visual_editor/config.py` (add `models_root: str = "./models"`)
+- Test: `tests/routes/test_adapt.py`
+
+**Steps:**
+1. Write failing test `tests/routes/test_adapt.py::test_post_adapt_writes_tree_and_persists_row`. Expected: 404 from route registration miss.
+2. Run, see fail.
+3. Author migration `0003_adapt_runs.py` creating `adapt_runs(id UUID PK, project_id UUID FK ON DELETE CASCADE, model_dir TEXT, pcb_name TEXT, inspected_count INT, status TEXT CHECK in ('ok','failed') DEFAULT 'ok', created_at TIMESTAMPTZ DEFAULT now())`, index on `project_id`.
+4. Add `AdaptRun` SQLAlchemy model to `db/models.py` with relationship `Project.adapt_runs` (cascade delete).
+5. Author `schemas/adapt.py`: `AdaptRequest(lsf_annotation: LSAnnotation)`, `AdaptResponse(id, project_id, model_dir, pcb_name, inspected_count, status, created_at)`.
+6. Implement `routes/adapt.py`:
+   - `POST /api/projects/{project_id}/adapt` body `AdaptRequest` → `compose_from_project(...)` → INSERT `AdaptRun` → 201 envelope with `AdaptResponse`. 422 envelope on `NoPlanError` / `NoInspectedRegionsError`. 502 envelope if filesystem write fails.
+   - `GET /api/projects/{project_id}/adapt` → list latest 20 `AdaptRun` rows for project, 200 envelope.
+7. Wire `models_root: str = "./models"` to `AppConfig`, prefix `IVE_`.
+8. Add typed exception handlers in `main.py` for `NoPlanError` (422) and `NoInspectedRegionsError` (422), both returning canonical envelope.
+9. Tests (DB-backed, skipif no Postgres):
+   - Happy path: seed project + BOM + ProposedPipelineRow → POST with synthetic LSAnnotation containing 1 inspected region → 201, `adapt_runs` row inserted, `model_dir` exists on disk under `IVE_MODELS_ROOT` (monkeypatched to `tmp_path`).
+   - 422 no plan: POST without a ProposedPipelineRow → 422 envelope, no `adapt_runs` row, no model_dir.
+   - 422 all skipped: POST with all-skipped annotation → 422 envelope, no row, no dir.
+   - GET history: 2 POSTs → GET returns 2 rows in `desc(created_at)` order.
+10. Run tests, confirm pass.
+11. Run full backend suite (`pytest -q`) to catch regressions in M0-M3 paths.
+12. Commit: `feat(adapter): POST /api/projects/{id}/adapt + adapt_runs history`
+
+**Verification:**
+- [ ] 4 route tests pass
+- [ ] Full backend suite still GREEN (no regressions)
+- [ ] `adapt_runs` row persisted only on success; no orphan dirs left after 422
+- [ ] Canonical `{status, message, data}` envelope on all paths (CLAUDE.md §6.1)
+- [ ] `IVE_MODELS_ROOT` env var honored; test uses monkeypatched tmp_path
+- [ ] No placeholder/TODO comments
+- [ ] CLAUDE.md §2 + §7 updated to reflect new table + routes
+
+### Out-of-scope for M4 (explicit non-goals)
+
+- Calling `auto-inspect-service /api/models/{name}/load` — that's M7 (training) or a separate handshake. M4 only WRITES the tree.
+- Customer-editable `locations.yaml` / `settings.yaml` UI — comes with M6 spatial calibration or M14 polish.
+- Real fiducial template image generation — `assets/` ships empty in v1; M5/M7 may populate.
+- Validating the emitted YAML against `auto-inspect-service`'s loader at compose time — defer to integration smoke in M7.
+
+### Execution Handoff
+
+Once M4 ships:
+
+| Option | Action |
+|---|---|
+| Execute now in this session | Invoke `gaspol-execute` on this section, starting Phase 4.1. Per-phase checkpoint reports + approval gates apply. |
+| Parallel split | Phases 4.1 + 4.2 + 4.3 + 4.4 are independent pure-function builders — can run via `gaspol-parallel` (mode: plan-phases). 4.5 + 4.6 are sequential (depend on prior). |
+| Separate session | Save the file path; restart with `/gaspol-execute docs/plans/2026-05-22-visual-editor-mvp.md` and point it at the "M4 — Detailed Breakdown" section. |
+
+---
+
 ## Cross-cutting non-functional requirements
 
 - **Logging:** structured (`structlog`) with `project_id`, `train_run_id` correlation fields
