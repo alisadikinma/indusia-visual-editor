@@ -103,6 +103,11 @@ class Project(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    pre_labels: Mapped[list["PreLabel"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (UniqueConstraint("slug", name="uq_projects_slug"),)
 
@@ -250,3 +255,38 @@ class AdaptRun(Base):
     )
 
     project: Mapped[Project] = relationship(back_populates="adapt_runs")
+
+
+class PreLabel(Base):
+    """Phase 5.2 — latest pre-label set per (project_id, side).
+
+    Pre-labels are emitted by the M5 Gemma-driven assistant; the M6 canvas
+    fetches them and bakes the regions into the LSF task as `predictions[]`
+    so the operator opens an annotated board on first visit.
+    Latest-wins per side (UNIQUE constraint enforces single row); re-running
+    the assistant replaces the row in-place via UPSERT in the route layer."""
+
+    __tablename__ = "pre_labels"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    side: Mapped[str] = mapped_column(String(8), nullable=False)
+    regions_json: Mapped[list] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    project: Mapped[Project] = relationship(back_populates="pre_labels")
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "side", name="uq_pre_labels_project_side"),
+    )

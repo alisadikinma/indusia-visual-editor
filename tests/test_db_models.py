@@ -24,6 +24,7 @@ from indusia_visual_editor.db.models import (
     AssetKind,
     BomItem,
     InspectScope,
+    PreLabel,
     Project,
     ProjectStatus,
 )
@@ -134,3 +135,42 @@ async def test_bom_item_inspect_scope_defaults_to_pending(session: AsyncSession)
     ).scalar_one()
     assert fetched.inspect_scope == InspectScope.PENDING
     assert fetched.defect_history_count == 0
+
+
+@pytest.mark.asyncio
+async def test_pre_label_row_persists_with_side_uniqueness(session: AsyncSession):
+    """Phase 5.2 — pre_labels unique on (project_id, side); latest-wins."""
+    p = Project(name="prelabel-board", slug=f"prelabel-{uuid.uuid4().hex[:6]}")
+    session.add(p)
+    await session.flush()
+
+    pre = PreLabel(
+        project_id=p.id,
+        side="top",
+        regions_json=[
+            {"designator": "R1", "bbox": [0.1, 0.2, 0.05, 0.05], "confidence": 0.9, "side": "top"}
+        ],
+    )
+    session.add(pre)
+    await session.flush()
+
+    fetched = (
+        await session.execute(select(PreLabel).where(PreLabel.project_id == p.id))
+    ).scalar_one()
+    assert fetched.side == "top"
+    assert len(fetched.regions_json) == 1
+    assert fetched.regions_json[0]["designator"] == "R1"
+
+
+@pytest.mark.asyncio
+async def test_pre_label_unique_per_project_side(session: AsyncSession):
+    """A second insert for the same (project_id, side) must violate uniqueness."""
+    p = Project(name="prelabel-dup", slug=f"prelabel-dup-{uuid.uuid4().hex[:6]}")
+    session.add(p)
+    await session.flush()
+
+    session.add(PreLabel(project_id=p.id, side="top", regions_json=[]))
+    await session.flush()
+    session.add(PreLabel(project_id=p.id, side="top", regions_json=[]))
+    with pytest.raises(Exception):  # IntegrityError on UNIQUE(project_id, side)
+        await session.flush()
