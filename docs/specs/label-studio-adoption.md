@@ -290,15 +290,32 @@ Parent usage:
 
 **Option (a) — npm package via the upstream repo's build artifact (RECOMMENDED v1)**
 
-LSF is in a private workspace; not published to public npm. Steps to consume:
+LSF is in a private workspace; not published to public npm. Steps to consume — **verified end-to-end in [`lsf-build.md`](./lsf-build.md) on 2026-05-22**:
 
 1. Clone Label Studio repo as a sibling: `D:\Projects\label-studio\` (already there)
-2. In `D:\Projects\label-studio\web\`, run `yarn install && yarn lsf:build`
-3. Produces `web/libs/editor/dist/` with the LSF bundle (UMD)
-4. Copy `dist/main.js` + `dist/main.css` into our app's `web/public/lsf/` OR add as git submodule pointing to a built tag
-5. Load via `<script src="/lsf/main.js">` in `web/index.html` → `window.LabelStudio` becomes available
+2. Prep yarn 1.22.22 via corepack (do NOT use yarn 4 — lockfile is v1):
+   ```powershell
+   corepack prepare yarn@1.22.22
+   ```
+3. In `D:\Projects\label-studio\web\`, install deps (~10 min cold, 746 MB node_modules):
+   ```powershell
+   corepack yarn@1.22.22 install --frozen-lockfile --network-timeout 600000
+   ```
+4. Build the LSF library bundle (~4 min). The `MODE=standalone` env var is **required** — without it webpack builds the labelstudio SPA instead of the editor library:
+   ```powershell
+   $env:MODE="standalone"; $env:NODE_ENV="production"
+   corepack yarn@1.22.22 nx run editor:build:production
+   ```
+5. Output lands at `D:\Projects\label-studio\web\dist\libs\editor\` (NOT `web/libs/editor/dist/`). Contents: `main.js` (4.5 MB ES module), `main.css` (1.5 MB), 5 async chunks (`29.js`, `131.js`, `352.js`, `616.js`, `710.js`), `decode-audio.wasm`, `Figtree-*.ttf`, `3rdpartylicenses.txt`, and a demo `public/` dir.
+6. Vendor the ENTIRE built tree (minus `*.map` and demo `public/files/`) into our app's `web/public/lsf/`. Webpack runtime loads the async chunks by relative path — shipping only `main.js` + `main.css` will fail at runtime:
+   ```powershell
+   robocopy D:\Projects\label-studio\web\dist\libs\editor `
+            D:\Projects\indusia-visual-editor\web\public\lsf `
+            /MIR /XF "*.map" /XD "public\files"
+   ```
+7. Load via `<script type="module" src="/lsf/main.js"></script>` in `web/index.html`. Webpack 5 emits ES-module output; `type="module"` is required. After load, `window.LabelStudio` is a constructable class.
 
-Lightweight, no monorepo mess. Re-build only when upgrading LSF.
+Lightweight, no monorepo mess. Re-build only when upgrading LSF. Apache 2.0 obligation: keep `3rdpartylicenses.txt` next to the bundle and add HumanSignal attribution to our app's About page.
 
 **Option (b) — Vendor LSF source into our monorepo (deferred to v2 if we need to customize)**
 
@@ -652,7 +669,7 @@ Add to the map:
 ### 6.6 New Phase 0.5 spike (before M6)
 
 Add to M0 (or run alongside M1):
-- **0.5** Build LSF locally — `cd D:\Projects\label-studio\web && yarn install --frozen-lockfile && yarn lsf:build`; verify `web/libs/editor/dist/main.js` exists; smoke-test serving it via simple HTML page + `new LabelStudio(...)`. Document build command in `docs/specs/lsf-build.md`. Time: 30 min if Yarn cache cold, 5 min hot.
+- **0.5** Build LSF locally per the corrected procedure in [`lsf-build.md`](./lsf-build.md) §2: prep yarn 1.22.22 via corepack, `yarn install --frozen-lockfile`, then `MODE=standalone NODE_ENV=production yarn nx run editor:build:production`. Verify `D:\Projects\label-studio\web\dist\libs\editor\main.js` exists (~4.5 MB) and contains the `LabelStudio` identifier. Smoke-test by serving the dist dir via `python -m http.server` and confirming `window.LabelStudio` is a function with zero console errors. Time: ~15 min cold, ~4 min hot. **Status: COMPLETED 2026-05-22** — see `lsf-build.md`.
 
 ---
 
