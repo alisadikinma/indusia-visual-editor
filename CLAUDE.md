@@ -12,7 +12,7 @@
 | One-line | Factory-user-driven PCB inspection platform — BOM + golden sample → production inspection in hours, no YAML, no CLI |
 | Primary user | MI division operator / supervisor at PCB factories (non-coder) |
 | Repo root | `D:\Projects\indusia-visual-editor` |
-| Status | M0 in progress (Phase 0.5 ✓, Phase 0.1 ✓, Phase 0.2 ✓, Phase 0.3 ✓, Phase 0.4 ✓; next: M1 Phase 1.1 DB schema) |
+| Status | M0 ✓ complete · M1 Phase 1.1 ✓ (schema + Alembic baseline); next: Phase 1.2 Projects CRUD |
 | Plan | [docs/plans/2026-05-22-visual-editor-mvp.md](docs/plans/2026-05-22-visual-editor-mvp.md) |
 | Adoption spec | [docs/specs/label-studio-adoption.md](docs/specs/label-studio-adoption.md) |
 | LSF build spec | [docs/specs/lsf-build.md](docs/specs/lsf-build.md) |
@@ -24,11 +24,11 @@ Only commit history is authoritative — never invent state. As of 2026-05-22:
 
 | Layer | Built | Not yet built |
 |---|---|---|
-| Backend | `pyproject.toml`, `src/indusia_visual_editor/{__init__,config,main}.py`, `GET /health` | DB, models, all routes besides /health, all services, LLM client, asset storage |
-| Tests | `tests/test_health.py` (1 test) + `tests/spike/test_graphflow_schema.py` (2 tests, Phase 0.2 spike) | everything else |
+| Backend | `pyproject.toml`, `src/indusia_visual_editor/{__init__,config,main}.py`, `GET /health`, `db/{models,session}.py` with Project/Asset/BomItem + AsyncSession factory | All routes besides /health, services, LLM client, asset storage |
+| Tests | 7 tests pass: health, db_connection, 3× db_models (project+asset+bom roundtrip, slug uniqueness, default inspect_scope), 2× graphflow schema spike | everything else |
 | Frontend | Vue 3 + Vite 5 + TS scaffold at `web/` with router, Pinia, Tailwind, Konva deps; 1 Vitest test passes; `/` route → Dashboard.vue stub | Real Dashboard (Phase 1.4), Wizard (Phase 2.3), LSF embed (M6) |
 | Docker | `docker-compose.dev.yml` (postgres:16-alpine on host port 5433, named volume `ive-postgres-data`), dev `Dockerfile.api` + `web/Dockerfile`, `scripts/dev-{up,down}.ps1` helpers | Production Dockerfiles + Traefik (M14) |
-| DB | postgres container reachable on `localhost:5433` (user/pw/db all `ive`), asyncpg + SQLAlchemy 2.x async installed, connection test passes | Schema + Alembic baseline (Phase 1.1) |
+| DB | Alembic baseline 0001 applied: `projects`, `assets`, `bom_items` tables live with UUID PKs, TIMESTAMPTZ, JSONB extra, CHECK-constraint enums. Downgrade→upgrade cycle clean. | Future migrations per phase |
 | LSF | upstream build verified, NOT yet vendored | vendor in M6 Phase 6.1 |
 | Graphflow schema | spec documented (2-layer, 49 node types) | adapter implementation in M4 |
 
@@ -196,9 +196,9 @@ Map these to HTTP responses via FastAPI exception handlers in `main.py`. Mirror 
 - DB tests use a separate test DB + transactional rollback fixture (set up in Phase 1.1)
 - Fixtures for BOMs / images go in `tests/fixtures/`
 
-## 7. Database schema — planned (Phase 1.1+)
+## 7. Database schema — Phase 1.1 baseline LIVE
 
-Authoritative only when migrations exist. Until then, this is the design.
+Migration `alembic/versions/0001_initial_schema.py` defines `projects`, `assets`, `bom_items`. Tables below remain DESIGN until their respective phases ship migrations.
 
 ```sql
 -- Phase 1.1
@@ -434,7 +434,7 @@ Invoke-WebRequest http://127.0.0.1:8002/health -UseBasicParsing
 ## 16. What NOT to do — top anti-hallucination guardrails
 
 1. **Do not invent hooks, components, or routes.** Check the actual file tree first. As of 2026-05-22 only `/health` exists.
-2. **Do not assume a DB schema exists.** Phase 1.1 hasn't run. No tables exist yet. Migrations live in `alembic/versions/` and are authoritative.
+2. **Phase 1.1 ✓**: `projects`, `assets`, `bom_items` exist via Alembic migration `0001_initial`. Other tables in §7 are still design-only — check `alembic/versions/` before assuming a table exists.
 3. **Do not modify `D:\Projects\Indusia-Inspection\` or `D:\Projects\label-studio\`** from this project. They are sibling repos with their own lifecycle.
 4. **Do not fork LSF.** We vendor the built artifact; no source-level changes.
 5. **Do not substitute mock data for real integrations.** If a hook / service / table doesn't exist, raise it as a blocker and ask. See gaspol-execute Iron Laws.

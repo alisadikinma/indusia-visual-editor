@@ -18,6 +18,7 @@ class AppConfig(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8002
     log_level: str = "INFO"
+    database_url: str | None = None
 
 
 def get_config() -> AppConfig:
