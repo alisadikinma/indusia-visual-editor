@@ -1,0 +1,46 @@
+# Hand-rendered copy of upstream auto-inspect-service preset:
+#   src/auto_inspect_service/templates/presets/missing_yolo.yaml
+# Jinja variables substituted with concrete values to make the file
+# parseable as plain YAML. The original template variables and their
+# defaults are noted in docs/specs/graphflow-config-schema.md.
+#
+# Rendering context (for reproducibility):
+#   component_name: U7
+#   expand_ratio: 0.2
+#   weight_path: /data/models/board-NV7320H-1/v3/group_dip/weights/best.pt
+#   threshold: 0.2
+nodes:
+  data:
+    type: input
+  preprocess:
+    type: yolo_crop
+    params:
+      classes: "U7"
+      expand_ratio: 0.2
+  detector:
+    type: yolo_estimator
+    params:
+      weight_path: "/data/models/board-NV7320H-1/v3/group_dip/weights/best.pt"
+      verbose: false
+  check_missing:
+    type: transform_result
+    params:
+      threshold: 0.2
+      classes: "U7"
+  postprocess:
+    type: transform_result
+    params:
+      classes: "U7"
+      not_good_classes:
+        - missing
+  output:
+    type: merge_result
+edges:
+  data:
+    - preprocess
+    - check_missing
+    - postprocess
+  preprocess: detector
+  detector: postprocess
+  check_missing: output
+  postprocess: output
