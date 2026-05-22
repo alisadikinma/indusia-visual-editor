@@ -12,7 +12,7 @@
 | One-line | Factory-user-driven PCB inspection platform — BOM + golden sample → production inspection in hours, no YAML, no CLI |
 | Primary user | MI division operator / supervisor at PCB factories (non-coder) |
 | Repo root | `D:\Projects\indusia-visual-editor` |
-| Status | M0 in progress (Phase 0.5 ✓, Phase 0.1 ✓, Phase 0.2 ✓, Phase 0.3 ✓; next: Phase 0.4 Docker Compose) |
+| Status | M0 in progress (Phase 0.5 ✓, Phase 0.1 ✓, Phase 0.2 ✓, Phase 0.3 ✓, Phase 0.4 ✓; next: M1 Phase 1.1 DB schema) |
 | Plan | [docs/plans/2026-05-22-visual-editor-mvp.md](docs/plans/2026-05-22-visual-editor-mvp.md) |
 | Adoption spec | [docs/specs/label-studio-adoption.md](docs/specs/label-studio-adoption.md) |
 | LSF build spec | [docs/specs/lsf-build.md](docs/specs/lsf-build.md) |
@@ -27,8 +27,8 @@ Only commit history is authoritative — never invent state. As of 2026-05-22:
 | Backend | `pyproject.toml`, `src/indusia_visual_editor/{__init__,config,main}.py`, `GET /health` | DB, models, all routes besides /health, all services, LLM client, asset storage |
 | Tests | `tests/test_health.py` (1 test) + `tests/spike/test_graphflow_schema.py` (2 tests, Phase 0.2 spike) | everything else |
 | Frontend | Vue 3 + Vite 5 + TS scaffold at `web/` with router, Pinia, Tailwind, Konva deps; 1 Vitest test passes; `/` route → Dashboard.vue stub | Real Dashboard (Phase 1.4), Wizard (Phase 2.3), LSF embed (M6) |
-| Docker | none yet | Phase 0.4 |
-| DB | none yet | Phase 1.1 (Alembic baseline) |
+| Docker | `docker-compose.dev.yml` (postgres:16-alpine on host port 5433, named volume `ive-postgres-data`), dev `Dockerfile.api` + `web/Dockerfile`, `scripts/dev-{up,down}.ps1` helpers | Production Dockerfiles + Traefik (M14) |
+| DB | postgres container reachable on `localhost:5433` (user/pw/db all `ive`), asyncpg + SQLAlchemy 2.x async installed, connection test passes | Schema + Alembic baseline (Phase 1.1) |
 | LSF | upstream build verified, NOT yet vendored | vendor in M6 Phase 6.1 |
 | Graphflow schema | spec documented (2-layer, 49 node types) | adapter implementation in M4 |
 
@@ -159,7 +159,7 @@ Planned (add to `AppConfig` when needed, never read `os.environ` directly):
 | `auto-inspect-service` | 8001 | existing |
 | **`indusia-visual-editor` (us)** | **8002** | next free slot |
 | Ollama | 11434 | upstream default |
-| Postgres (dev) | 5432 | Phase 0.4 |
+| Postgres (dev container) | **5433** (host) → 5432 (container) | 5432 stays free for native Postgres |
 | Vue dev server | 5173 | Vite default |
 
 ### 6.4 Async patterns
