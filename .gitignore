@@ -36,6 +36,7 @@ web/.next/
 web/.nuxt/
 web/coverage/
 web/.turbo/
+web/*.tsbuildinfo
 
 # --- LSF vendored bundle (built artifact, not source) ---
 web/public/lsf/main.js
