@@ -162,30 +162,26 @@ The LSF bundle is built once from the upstream `D:\Projects\label-studio` repo a
 
 ## Status
 
-**Active development.** Following the milestone roadmap in [`docs/plans/2026-05-22-visual-editor-mvp.md`](docs/plans/2026-05-22-visual-editor-mvp.md):
+**Active development — M0 through M4 shipped (149 backend + 9 frontend tests pass).** Following the milestone roadmap in [`docs/plans/2026-05-22-visual-editor-mvp.md`](docs/plans/2026-05-22-visual-editor-mvp.md):
 
-| Phase | Status |
-|---|---|
-| Design + plan + adoption specs | ✅ Done |
-| Phase 0.5 — LSF build verification spike | ✅ Done |
-| Phase 0.1 — Backend FastAPI scaffold + /health | ✅ Done |
-| Phase 0.2 — graphflow config.yaml schema spike | ✅ Done |
-| Phase 0.3 — Frontend Vue 3 scaffold | ⏳ Pending |
-| Phase 0.4 — Docker Compose dev env | ⏳ Pending |
-| M1 — Project + Asset CRUD + Dashboard | ⏳ Pending |
-| M2 — BOM parser + classifier + preview | ⏳ Pending |
-| M3 — LLM client foundation | ⏳ Pending |
-| M4 — Pipeline planner adapter | ⏳ Roadmap |
-| M5 — Pre-label assistant | ⏳ Roadmap |
-| M6 — Labeling canvas (LSF embed) | ⏳ Roadmap |
-| M7 — Training integration + SSE | ⏳ Roadmap |
-| M8 — Gate 1 (training approval) | ⏳ Roadmap |
-| M9 — Eval metrics view | ⏳ Roadmap |
-| M10 — Gate 2 + promote-to-production | ⏳ Roadmap |
-| M11 — Edge notification + version pin | ⏳ Roadmap |
-| M12 — Chat advisor | ⏳ Roadmap |
-| M13 — Auth + multi-user | ⏳ Roadmap |
-| M14 — Polish + production deploy | ⏳ Roadmap |
+| Milestone | Status | What landed |
+|---|---|---|
+| Design + plan + adoption specs | ✅ Done | M0–M14 roadmap, LSF adoption spec, graphflow schema spec, dashboard tokens |
+| M0 — Bootstrap | ✅ Done | LSF build spike, FastAPI scaffold + `/health`, graphflow config.yaml spike, Vue 3 + Vite + Pinia + Tailwind frontend scaffold, Docker Compose dev env (postgres:16 on host port 5433) |
+| M1 — Project + Asset CRUD + Dashboard | ✅ Done | Alembic baseline (projects/assets/bom_items), `/api/projects` CRUD, `/api/projects/{id}/assets` upload + list + binary (SHA256 dedup, 50MB cap, path-traversal-safe), Dashboard view with real API + create dialog + status badges |
+| M2 — BOM parser + classifier + preview | ✅ Done | xlsx/csv parser with multi-designator expansion + Bahasa Indonesia errors, REPLACE persistence strategy, MI/SMT heuristic classifier (`component_taxonomy.yaml`), `derive_inspect_scope` (LSF annotation → BomItemUpdate with detector presets), `defect_detector_mapping.yaml` (9 canonical criteria), ProjectWizard step 1 with drag-drop + BomTable |
+| M3 — LLM client foundation | ✅ Done | Ollama async httpx client (typed `LlmError` subclasses, structured-output via `format=`, base64 image passthrough), pydantic schemas for all four Gemma roles (planner / prelabel / judge / advisor) with `extra="forbid"` + field validators, planner skeleton with system prompt at `prompts/planner.md`, `POST/GET /api/projects/{id}/llm/plan` route + `proposed_pipelines` versioned table |
+| M4 — Planner adapter → graphflow writer | ✅ Done | `data/detector_to_nodes.yaml` mapping 13 presets to 51-name registry, `node_map.py`, per-component `subgraph.py` builder, `top_config.py` + bundled `default_locations.yaml` + `default_settings.yaml`, atomic `writer.py` (tempdir + backup-on-overwrite + rollback-on-fail), `compose.py` orchestrator, `POST/GET /api/projects/{id}/adapt` route + `adapt_runs` table. Writes to `IVE_MODELS_ROOT` shared filesystem path (locked ADR). |
+| M5 — Pre-label assistant | ⏳ Roadmap | Needs `gaspol-plan` sub-phase breakdown |
+| M6 — Labeling canvas (LSF embed) | ⏳ Roadmap | LSF build verified upstream; vendoring still pending |
+| M7 — Training integration + SSE | ⏳ Roadmap | |
+| M8 — Gate 1 (training approval) | ⏳ Roadmap | |
+| M9 — Eval metrics view | ⏳ Roadmap | |
+| M10 — Gate 2 + promote-to-production | ⏳ Roadmap | |
+| M11 — Edge notification + version pin | ⏳ Roadmap | |
+| M12 — Chat advisor | ⏳ Roadmap | |
+| M13 — Auth + multi-user | ⏳ Roadmap | |
+| M14 — Polish + production deploy | ⏳ Roadmap | |
 
 Refer to [CLAUDE.md](CLAUDE.md) for the authoritative current-state inventory (routes built, hooks available, tables existing) — that file is updated every phase, this README describes the eventual product.
 
