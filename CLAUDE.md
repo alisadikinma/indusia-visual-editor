@@ -12,10 +12,11 @@
 | One-line | Factory-user-driven PCB inspection platform — BOM + golden sample → production inspection in hours, no YAML, no CLI |
 | Primary user | MI division operator / supervisor at PCB factories (non-coder) |
 | Repo root | `D:\Projects\indusia-visual-editor` |
-| Status | M0 in progress (Phase 0.5 ✓, Phase 0.1 ✓; next: Phase 0.2) |
+| Status | M0 in progress (Phase 0.5 ✓, Phase 0.1 ✓, Phase 0.2 ✓; next: Phase 0.3 Vue scaffold) |
 | Plan | [docs/plans/2026-05-22-visual-editor-mvp.md](docs/plans/2026-05-22-visual-editor-mvp.md) |
 | Adoption spec | [docs/specs/label-studio-adoption.md](docs/specs/label-studio-adoption.md) |
 | LSF build spec | [docs/specs/lsf-build.md](docs/specs/lsf-build.md) |
+| Graphflow schema | [docs/specs/graphflow-config-schema.md](docs/specs/graphflow-config-schema.md) |
 
 ## 2. Current implementation state
 
@@ -24,11 +25,12 @@ Only commit history is authoritative — never invent state. As of 2026-05-22:
 | Layer | Built | Not yet built |
 |---|---|---|
 | Backend | `pyproject.toml`, `src/indusia_visual_editor/{__init__,config,main}.py`, `GET /health` | DB, models, all routes besides /health, all services, LLM client, asset storage |
-| Tests | `tests/test_health.py` (1 test) | everything else |
+| Tests | `tests/test_health.py` (1 test) + `tests/spike/test_graphflow_schema.py` (2 tests, Phase 0.2 spike) | everything else |
 | Frontend | none yet | Vue 3 scaffold (Phase 0.3), Dashboard (Phase 1.4), Wizard (Phase 2.3) |
 | Docker | none yet | Phase 0.4 |
 | DB | none yet | Phase 1.1 (Alembic baseline) |
 | LSF | upstream build verified, NOT yet vendored | vendor in M6 Phase 6.1 |
+| Graphflow schema | spec documented (2-layer, 49 node types) | adapter implementation in M4 |
 
 **Anti-hallucination rule:** if it isn't in the file tree or the git log, it doesn't exist. Run `git log --oneline` if uncertain.
 
