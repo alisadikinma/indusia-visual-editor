@@ -15,6 +15,7 @@ from indusia_visual_editor import __version__
 from indusia_visual_editor.config import get_config
 from indusia_visual_editor.routes.assets import router as assets_router
 from indusia_visual_editor.routes.projects import router as projects_router
+from indusia_visual_editor.services.asset.bom_parser import BomParseError
 from indusia_visual_editor.services.asset.image_store import (
     AssetNotFoundError,
     AssetTooLargeError,
@@ -70,6 +71,11 @@ async def _asset_not_found(request: Request, exc: AssetNotFoundError):
 @app.exception_handler(AssetTooLargeError)
 async def _asset_too_large(request: Request, exc: AssetTooLargeError):
     return failed(f"file too large: {exc}", status_code=413)
+
+
+@app.exception_handler(BomParseError)
+async def _bom_parse_failed(request: Request, exc: BomParseError):
+    return failed(str(exc), status_code=422)
 
 
 app.include_router(projects_router)

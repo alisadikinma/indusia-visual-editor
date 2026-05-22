@@ -12,7 +12,7 @@
 | One-line | Factory-user-driven PCB inspection platform — BOM + golden sample → production inspection in hours, no YAML, no CLI |
 | Primary user | MI division operator / supervisor at PCB factories (non-coder) |
 | Repo root | `D:\Projects\indusia-visual-editor` |
-| Status | M0 ✓ · M1 ✓ · M2 Phase 2.1 ✓ BOM parser; next: Phase 2.2 BOM upload route |
+| Status | M0 ✓ · M1 ✓ · M2 Phase 2.1 ✓ · 2.2 ✓ BOM upload + persist (REPLACE strategy); next: Phase 2.2b MI/SMT classifier |
 | Plan | [docs/plans/2026-05-22-visual-editor-mvp.md](docs/plans/2026-05-22-visual-editor-mvp.md) |
 | Adoption spec | [docs/specs/label-studio-adoption.md](docs/specs/label-studio-adoption.md) |
 | LSF build spec | [docs/specs/lsf-build.md](docs/specs/lsf-build.md) |
@@ -25,7 +25,7 @@ Only commit history is authoritative — never invent state. As of 2026-05-22:
 | Layer | Built | Not yet built |
 |---|---|---|
 | Backend | FastAPI app, `GET /health`, `/api/projects` CRUD, `/api/projects/{id}/assets` upload + list + binary, DB models (Project/Asset/BomItem), `get_session` async dep, exception handlers for 404/409/413/422 all return `{status, message, data}` shape, fs storage at `IVE_STORAGE_ROOT` with SHA256 dedup, **BOM parser** (`services/asset/bom_parser.parse_bom`) — xlsx + csv, fuzzy column matching, multi-designator expansion, header autodetect, BomParseError with Bahasa Indonesia messages | BOM upload route (Phase 2.2), LLM client (M3), labels (M6) |
-| Tests | 28 tests pass: health, db_connection, 3× db_models, 7× projects CRUD, 7× assets, 7× bom_parser (xlsx, csv, missing column, multi-designator, extras, header not in row 1, empty file), 2× graphflow spike. `tests/conftest.py` clears `get_engine` lru_cache per-test. | everything else |
+| Tests | 33 tests pass: health, db_connection, 3× db_models, 7× projects CRUD, 7× assets, 7× bom_parser, 5× bom_upload (persist, link, 422 on bad bom + no orphan rows, REPLACE on re-upload, dedup no-op), 2× graphflow spike. `tests/conftest.py` clears `get_engine` lru_cache per-test. | everything else |
 | Frontend | Vue 3 + Vite 5 + TS at `web/`. Routes: `/` Dashboard (live API list + create dialog → POST → router push to wizard), `/projects/:id/wizard` placeholder. Pinia `useProjectsStore` with `fetch()`/`create()`. Axios client at `api/projects.ts` (envelope-aware). `StatusBadge` 4 variants per `docs/design/dashboard-tokens.md`. CORS allowed on backend for :5173. 4 Vitest tests pass. | Wizard real impl (Phase 2.3), LSF embed (M6) |
 | Docker | `docker-compose.dev.yml` (postgres:16-alpine on host port 5433, named volume `ive-postgres-data`), dev `Dockerfile.api` + `web/Dockerfile`, `scripts/dev-{up,down}.ps1` helpers | Production Dockerfiles + Traefik (M14) |
 | DB | Alembic baseline 0001 applied: `projects`, `assets`, `bom_items` tables live with UUID PKs, TIMESTAMPTZ, JSONB extra, CHECK-constraint enums. Downgrade→upgrade cycle clean. | Future migrations per phase |

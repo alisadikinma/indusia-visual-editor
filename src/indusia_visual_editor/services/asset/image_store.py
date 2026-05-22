@@ -14,11 +14,12 @@ import mimetypes
 import uuid
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from indusia_visual_editor.config import get_config
-from indusia_visual_editor.db.models import Asset, AssetKind
+from indusia_visual_editor.db.models import Asset, AssetKind, BomItem
+from indusia_visual_editor.services.asset.bom_parser import parse_bom
 
 
 class AssetTooLargeError(Exception):
@@ -55,6 +56,12 @@ async def save_asset(
 
     Returns (asset, created) — created=False means a dedup hit occurred and
     no new row was inserted.
+
+    For `kind=AssetKind.BOM`, the bytes are parsed FIRST (validation up-
+    front). On success the asset is persisted and the project's bom_items
+    are REPLACED with the new drafts (latest BOM wins — Phase 2.2 decision).
+    On parse failure, BomParseError propagates and the route maps it to 422
+    via the global exception handler; nothing is written to DB or disk.
     """
     config = get_config()
     if len(file_bytes) > config.max_asset_bytes:
@@ -62,9 +69,15 @@ async def save_asset(
             f"{len(file_bytes)} bytes exceeds limit {config.max_asset_bytes}"
         )
 
+    # Parse BOM FIRST so a malformed file never touches the DB or disk.
+    bom_drafts = None
+    if kind == AssetKind.BOM:
+        bom_drafts = parse_bom(file_bytes, filename)
+
     sha256 = hashlib.sha256(file_bytes).hexdigest()
 
-    # Dedup check FIRST — avoid wasted disk write.
+    # Dedup check — same bytes already uploaded? Skip both disk write
+    # and bom_items mutation (identical bytes → identical parsed result).
     existing = (
         await session.execute(
             select(Asset).where(
@@ -94,6 +107,29 @@ async def save_asset(
     session.add(asset)
     await session.flush()
     await session.refresh(asset)
+
+    if bom_drafts is not None:
+        # REPLACE strategy — drop all previous bom_items for this project,
+        # then bulk-insert the new drafts. Same DB transaction as the asset
+        # insert so either both land or neither does.
+        await session.execute(
+            delete(BomItem).where(BomItem.project_id == project_id)
+        )
+        session.add_all(
+            [
+                BomItem(
+                    project_id=project_id,
+                    designator=d.designator,
+                    value=d.value,
+                    package=d.package,
+                    qty=d.qty,
+                    extra=d.extra,
+                )
+                for d in bom_drafts
+            ]
+        )
+        await session.flush()
+
     return asset, True
 
 
