@@ -12,7 +12,12 @@ from fastapi.exceptions import RequestValidationError
 
 from indusia_visual_editor import __version__
 from indusia_visual_editor.config import get_config
+from indusia_visual_editor.routes.assets import router as assets_router
 from indusia_visual_editor.routes.projects import router as projects_router
+from indusia_visual_editor.services.asset.image_store import (
+    AssetNotFoundError,
+    AssetTooLargeError,
+)
 from indusia_visual_editor.services.project.crud import (
     DuplicateSlugError,
     ProjectNotFoundError,
@@ -43,7 +48,18 @@ async def _validation_failed(request: Request, exc: RequestValidationError):
     return failed("validation failed", status_code=422, data=exc.errors())
 
 
+@app.exception_handler(AssetNotFoundError)
+async def _asset_not_found(request: Request, exc: AssetNotFoundError):
+    return failed(f"asset {exc} not found", status_code=404)
+
+
+@app.exception_handler(AssetTooLargeError)
+async def _asset_too_large(request: Request, exc: AssetTooLargeError):
+    return failed(f"file too large: {exc}", status_code=413)
+
+
 app.include_router(projects_router)
+app.include_router(assets_router)
 
 
 @app.get("/health")

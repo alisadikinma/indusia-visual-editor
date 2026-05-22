@@ -20,6 +20,14 @@ class AppConfig(BaseSettings):
     log_level: str = "INFO"
     database_url: str | None = None
 
+    # Phase 1.3 — asset storage
+    storage_root: str = "./storage"
+    max_asset_bytes: int = 50 * 1024 * 1024  # 50 MB
 
+
+from functools import lru_cache
+
+
+@lru_cache(maxsize=1)
 def get_config() -> AppConfig:
     return AppConfig()
