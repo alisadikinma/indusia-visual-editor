@@ -25,10 +25,12 @@ from indusia_visual_editor.db.models import (
     Asset,
     AssetKind,
     BomItem,
+    PreLabel,
     ProposedPipelineRow,
 )
 from indusia_visual_editor.db.session import get_session
 from indusia_visual_editor.schemas.llm import ProposedPipelineRead
+from indusia_visual_editor.schemas.prelabel import PreLabelRunRead
 from indusia_visual_editor.services.asset.image_store import absolute_path
 from indusia_visual_editor.services.llm.client import OllamaClient
 from indusia_visual_editor.services.llm.exceptions import (
@@ -41,6 +43,7 @@ from indusia_visual_editor.services.llm.planner import (
     BomItemForPlanner,
     propose_pipeline,
 )
+from indusia_visual_editor.services.llm.prelabel import prelabel_designators
 from indusia_visual_editor.services.project.crud import get_project
 from indusia_visual_editor.utils.responses import success
 
@@ -198,3 +201,150 @@ async def get_latest_plan(
     if row is None:
         raise HTTPException(status_code=404, detail="no plan yet for this project")
     return success(data=_serialize(row))
+
+
+# ---------------- Phase 5.3 — pre-label assistant ----------------
+
+
+def _golden_kind(side: str) -> AssetKind:
+    return AssetKind.GOLDEN_TOP if side == "top" else AssetKind.GOLDEN_BOTTOM
+
+
+def _serialize_prelabel(row: PreLabel) -> dict:
+    return {
+        "id": str(row.id),
+        "project_id": str(row.project_id),
+        "side": row.side,
+        "regions": row.regions_json,
+        "created_at": row.created_at.isoformat(),
+    }
+
+
+@router.post("/prelabel", status_code=status.HTTP_201_CREATED)
+async def create_prelabel(
+    project_id: uuid.UUID,
+    side: str,
+    session: AsyncSession = Depends(get_session),
+):
+    if side not in ("top", "bottom"):
+        raise HTTPException(
+            status_code=422, detail=f"side must be 'top' or 'bottom', got {side!r}"
+        )
+
+    await get_project(session, project_id)
+
+    bom_rows = (
+        await session.execute(
+            select(BomItem)
+            .where(BomItem.project_id == project_id)
+            .order_by(BomItem.designator)
+        )
+    ).scalars().all()
+    if not bom_rows:
+        raise HTTPException(
+            status_code=422, detail="project has no bom_items; upload a BOM first"
+        )
+
+    golden = (
+        await session.execute(
+            select(Asset)
+            .where(
+                Asset.project_id == project_id,
+                Asset.kind == _golden_kind(side),
+            )
+            .order_by(desc(Asset.uploaded_at))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if golden is None:
+        raise HTTPException(
+            status_code=422,
+            detail=f"project has no golden_{side} asset; upload one before pre-label",
+        )
+
+    drawing = (
+        await session.execute(
+            select(Asset)
+            .where(Asset.project_id == project_id, Asset.kind == AssetKind.DRAWING)
+            .order_by(desc(Asset.uploaded_at))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    golden_bytes = absolute_path(golden).read_bytes()
+    drawing_bytes = absolute_path(drawing).read_bytes() if drawing is not None else None
+
+    cfg = get_config()
+    client = _llm_client_factory(base_url=cfg.ollama_url, timeout=cfg.ollama_timeout)
+    try:
+        try:
+            regions = await prelabel_designators(
+                client=client,
+                model=cfg.ollama_model_prelabel,
+                bom_designators=[r.designator for r in bom_rows],
+                golden_image=golden_bytes,
+                drawing_image=drawing_bytes,
+                side=side,
+            )
+        except (LlmConnectionError, LlmTimeoutError, LlmResponseError) as exc:
+            raise HTTPException(status_code=502, detail=f"Ollama unavailable: {exc}")
+        except LlmValidationError as exc:
+            raise HTTPException(
+                status_code=502, detail=f"Ollama returned invalid pre-label: {exc}"
+            )
+    finally:
+        await client.aclose()
+
+    # Latest-wins UPSERT: drop any existing row for this (project, side) then insert.
+    existing = (
+        await session.execute(
+            select(PreLabel).where(
+                PreLabel.project_id == project_id,
+                PreLabel.side == side,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        await session.delete(existing)
+        await session.flush()
+
+    row = PreLabel(
+        project_id=project_id,
+        side=side,
+        regions_json=[r.model_dump(mode="json") for r in regions],
+    )
+    session.add(row)
+    await session.flush()
+    await session.refresh(row)
+
+    return success(
+        data=_serialize_prelabel(row),
+        message="pre-label saved",
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+@router.get("/prelabel")
+async def get_latest_prelabel(
+    project_id: uuid.UUID,
+    side: str,
+    session: AsyncSession = Depends(get_session),
+):
+    if side not in ("top", "bottom"):
+        raise HTTPException(
+            status_code=422, detail=f"side must be 'top' or 'bottom', got {side!r}"
+        )
+    await get_project(session, project_id)
+    row = (
+        await session.execute(
+            select(PreLabel).where(
+                PreLabel.project_id == project_id,
+                PreLabel.side == side,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=404, detail=f"no pre-label yet for side={side}"
+        )
+    return success(data=_serialize_prelabel(row))
