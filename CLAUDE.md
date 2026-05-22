@@ -402,6 +402,22 @@ UI default language: **Bahasa Indonesia**, technical terms English. No emoji in 
 - All env paths normalized via `pathlib.Path` in Python code; never string-concat paths
 - Storage layout: `storage/{project_id}/{kind}/{sha256}.{ext}` (see Phase 1.3)
 
+## 13.5. Git workflow — solo-developer policy (LOCKED)
+
+This is a single-maintainer project. The repo's `main` branch is the working trunk; there is **no PR review ceremony** unless the operator explicitly asks for one.
+
+| Rule | Detail |
+|---|---|
+| **Default target** | Push directly to `origin/main` after each green phase. Do NOT open a PR by default. |
+| **When to branch** | Only on operator request (e.g. "buat PR dulu") or when a change is risky enough that a review-before-merge is useful (e.g. force-push, history rewrite, schema-destructive migration). |
+| **Commit hygiene** | One conventional commit per phase, with the gaspol-execute Co-Authored-By trailer. Atomic — green tests before commit, never partial state. |
+| **Pushing** | `git push origin main` is the standard end-of-phase action. Auto-mode classifier may still block this on first invocation; the operator pre-authorizes by adding `Bash(git push origin main:*)` to `.claude/settings.local.json`. Until that whitelist lands, the fallback is: operator runs the push manually from PowerShell, or merges a thin PR via the GitHub UI. |
+| **Self-modification** | The agent is NOT allowed to edit `.claude/settings.local.json` itself — that's a high-trust action reserved for the operator. The agent surfaces the exact snippet to paste and waits. |
+| **Hooks / signing** | Never `--no-verify`, never bypass GPG signing. If a hook fails, fix the underlying issue. |
+| **PR scope** | If a PR IS opened, scope it to the milestone (e.g. "M0–M3") or the phase. Update title + body when scope changes. |
+
+To pre-authorize main-pushes for future sessions: the operator (not the agent) adds two Bash patterns to the `permissions.allow` array in `.claude/settings.local.json` — one for `git push origin main` and one with the trailing wildcard variant. The agent does not edit this file, only references that the operator has applied this setting.
+
 ## 14. Build, test, run — current commands
 
 ```powershell
