@@ -213,6 +213,46 @@ async def test_reupload_bom_replaces_previous_items(
 
 
 @pytest.mark.asyncio
+async def test_upload_bom_persists_mi_classifier_hints(
+    client: AsyncClient, query_session: AsyncSession
+):
+    """Phase 2.2b: mi_likely + component_type must be set per row after parse."""
+    project_id = await _create_project(client, "classify")
+    payload = _csv_bytes(
+        [
+            ["Designator", "Value", "Package"],
+            ["R1", "10k", "0805"],
+            ["C4", "100uF/16V", "Radial"],
+            ["J1", "USB-C", ""],
+        ]
+    )
+
+    r = await client.post(
+        f"/api/projects/{project_id}/assets",
+        params={"kind": "bom"},
+        files={"file": ("bom.csv", io.BytesIO(payload), "text/csv")},
+    )
+    assert r.status_code == 201, r.text
+
+    rows = (
+        await query_session.execute(
+            select(BomItem).where(BomItem.project_id == project_id)
+        )
+    ).scalars().all()
+    by_designator = {r.designator: r for r in rows}
+
+    assert by_designator["R1"].mi_likely is False
+    assert by_designator["R1"].component_type == "smd_chip_passive"
+
+    assert by_designator["C4"].mi_likely is True
+    assert by_designator["C4"].component_type == "electrolytic_cap"
+
+    # J1: no package, designator prefix J → connector, MI-likely.
+    assert by_designator["J1"].mi_likely is True
+    assert by_designator["J1"].component_type == "connector"
+
+
+@pytest.mark.asyncio
 async def test_reupload_identical_bom_dedups_no_change(
     client: AsyncClient, query_session: AsyncSession
 ):

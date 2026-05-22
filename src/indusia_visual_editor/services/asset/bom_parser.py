@@ -30,6 +30,8 @@ from pathlib import Path
 from openpyxl import load_workbook
 from pydantic import BaseModel
 
+from indusia_visual_editor.services.asset.mi_classifier import classify
+
 logger = logging.getLogger(__name__)
 
 
@@ -62,6 +64,10 @@ class BomItemDraft(BaseModel):
     package: str | None = None
     qty: int | None = None
     extra: dict[str, str] | None = None
+    # Heuristic hints set by mi_classifier — UI badge + smart-select only,
+    # never auto-decides inspect_scope (Phase 2.2b).
+    mi_likely: bool = False
+    component_type: str | None = None
 
 
 def _classify_header(cell: str) -> str | None:
@@ -141,6 +147,9 @@ def _row_to_drafts(
 
     drafts: list[BomItemDraft] = []
     for d in designators:
+        pkg = fields.get("package") or ""
+        val = fields.get("value") or ""
+        cls = classify(package=str(pkg), value=str(val), designator=d)
         drafts.append(
             BomItemDraft(
                 designator=d,
@@ -148,6 +157,8 @@ def _row_to_drafts(
                 package=fields.get("package"),  # type: ignore[arg-type]
                 qty=fields.get("qty"),  # type: ignore[arg-type]
                 extra=extra or None,
+                mi_likely=cls.mi_likely,
+                component_type=cls.component_type,
             )
         )
     return drafts

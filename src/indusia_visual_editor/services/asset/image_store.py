@@ -124,6 +124,8 @@ async def save_asset(
                     package=d.package,
                     qty=d.qty,
                     extra=d.extra,
+                    mi_likely=d.mi_likely,
+                    component_type=d.component_type,
                 )
                 for d in bom_drafts
             ]
