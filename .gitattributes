@@ -1,0 +1,5 @@
+# Keep vendored Label Studio Frontend artifacts byte-exact across platforms.
+# Without `-text`, git's CRLF normalization rewrites .js/.css/.xml/.json on
+# Windows checkout, which breaks the sha256 manifest written by
+# scripts/vendor-lsf.ps1.
+web/public/lsf/** -text

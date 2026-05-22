@@ -1,0 +1,61 @@
+{
+    "source":  "D:/Projects/label-studio/web/dist/libs/editor",
+    "files":  {
+                  "131.js":  {
+                                 "sha256":  "7d1faa05fa959a1b2cb16f8b24085fdba446b31af13778038595df7cd5518a9f",
+                                 "size":  3957
+                             },
+                  "29.js":  {
+                                "sha256":  "18cd90cee6b377ca576bc38a0ba588d19e24cc9070944a60c501d7c1860022e4",
+                                "size":  1924
+                            },
+                  "352.js":  {
+                                 "sha256":  "04458fed2fc34a55c4d87d4d677ff3cf39751e69806f739a6bc4075986f9832f",
+                                 "size":  6178
+                             },
+                  "616.js":  {
+                                 "sha256":  "a78dd0916f893ec5b2cbf9289a3e59d070e31e5b386b7ed6134a9c60c9813855",
+                                 "size":  2098
+                             },
+                  "710.js":  {
+                                 "sha256":  "529cb12685bc46a3ad04b451c9a1e3b43d8028f4e4ccf96dabe6bbe0afbcffbb",
+                                 "size":  128192
+                             },
+                  "config.56e4e86518627fb4.xml":  {
+                                                      "sha256":  "6e1312f44eeadefef54edd229d3c842d8e5e644b87178a2d2bd5938a3c6e2728",
+                                                      "size":  1017
+                                                  },
+                  "decode-audio.wasm":  {
+                                            "sha256":  "b7fb089a142f26041fafc4326bac670b4c2e0a186c778355826ccff98040e895",
+                                            "size":  1214176
+                                        },
+                  "Figtree-Regular.ttf":  {
+                                              "sha256":  "ccf1ccc32671c6f48e027f43a5150042c74c5bfa655510b9cc7d0d5dfa38b849",
+                                              "size":  40584
+                                          },
+                  "Figtree-SemiBold.ttf":  {
+                                               "sha256":  "8b54a3a63bfb973cf650974764715ca656777f4e1c5f6a1a021711e6a6d450ef",
+                                               "size":  40852
+                                           },
+                  "main.css":  {
+                                   "sha256":  "fc928bb742ac8050d006d76ede58dfce3c7cb2540f90325b024141fcee22ea73",
+                                   "size":  1601131
+                               },
+                  "main.js":  {
+                                  "sha256":  "044af6be0e151fd8653d2a648593dda071a609c11db8d2076bcc5fb3fa16849d",
+                                  "size":  4757338
+                              },
+                  "public/favicon.ico":  {
+                                             "sha256":  "d94dd7ca847eb87868b44d4704db79303fe81c3ef4ed4cb46e125c519fe6a6ed",
+                                             "size":  15406
+                                         },
+                  "public/manifest.json":  {
+                                               "sha256":  "5009c487724763358bc3a70a3dd1932a755cbe68d90cd5621730aa427849ccd8",
+                                               "size":  320
+                                           },
+                  "public/styles/main.css":  {
+                                                 "sha256":  "3c5e8b8c44f9c1a3f3102bbb34e6572052e25f1de79a96ed0c27b29009a0e17d",
+                                                 "size":  1674
+                                             }
+              }
+}
