@@ -1,0 +1,81 @@
+# --- Sensitive: customer data + legacy code ---
+data/
+old-code/
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+*.egg-info/
+*.egg
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# --- Node / Frontend ---
+node_modules/
+.pnp/
+.pnp.js
+web/dist/
+web/build/
+web/.vite/
+web/.next/
+web/.nuxt/
+web/coverage/
+web/.turbo/
+
+# --- LSF vendored bundle (built artifact, not source) ---
+web/public/lsf/main.js
+web/public/lsf/main.css
+web/public/lsf/*.map
+
+# --- Secrets ---
+license/
+*.key
+*.pem
+*.crt
+.npmrc
+.yarnrc.yml
+
+# --- Runtime / generated ---
+storage/
+logs/
+.cache/
+*.log
+model_state.json
+
+# --- IDE / OS ---
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.shared.json
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Poetry ---
+poetry.lock
+# (we WILL commit poetry.lock once it's deterministic — remove this line later)
+
+# --- Docker ---
+docker-compose.override.yml
+
+# --- Misc ---
+*.bak
+*.tmp
+*.orig
