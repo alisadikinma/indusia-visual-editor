@@ -54,6 +54,7 @@ license/
 storage/
 logs/
 .cache/
+.spike-logs/
 *.log
 model_state.json
 
@@ -68,9 +69,12 @@ model_state.json
 Thumbs.db
 desktop.ini
 
+# --- Claude Code + Playwright MCP local caches ---
+.claude/
+.playwright-mcp/
+
 # --- Poetry ---
-poetry.lock
-# (we WILL commit poetry.lock once it's deterministic — remove this line later)
+# poetry.lock IS committed (standard practice, deterministic installs).
 
 # --- Docker ---
 docker-compose.override.yml
