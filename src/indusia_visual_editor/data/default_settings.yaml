@@ -1,0 +1,10 @@
+# Default camera/lighting settings — conservative safe baseline.
+# Source: derived from auto-inspect-service typical config patterns
+# (D:\Projects\Indusia-Inspection\auto-inspect-service\). M6/M14 should
+# verify against a known-good board and override per project as needed.
+camera:
+  gain: 1.0
+  exposure_ms: 30
+  white_balance: "auto"
+lighting:
+  brightness: 0.7

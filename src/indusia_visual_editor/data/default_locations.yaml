@@ -1,0 +1,11 @@
+# Default frame layout — single TOP + single BOT frame.
+# Refined by M6 spatial calibration; v1 ships this minimal baseline.
+frames:
+  - frame_id: "TOP-01"
+    side: "top"
+    location: {x: 0, y: 0}
+    unit: "mm"
+  - frame_id: "BOT-01"
+    side: "bottom"
+    location: {x: 0, y: 0}
+    unit: "mm"
