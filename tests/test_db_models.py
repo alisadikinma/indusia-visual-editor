@@ -24,6 +24,7 @@ from indusia_visual_editor.db.models import (
     AssetKind,
     BomItem,
     InspectScope,
+    Label,
     PreLabel,
     Project,
     ProjectStatus,
@@ -174,3 +175,84 @@ async def test_pre_label_unique_per_project_side(session: AsyncSession):
     session.add(PreLabel(project_id=p.id, side="top", regions_json=[]))
     with pytest.raises(Exception):  # IntegrityError on UNIQUE(project_id, side)
         await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_label_row_insert_and_unique_per_side_version(session: AsyncSession):
+    """Phase 6.2 — labels are versioned per (project, side). Re-submitting a
+    side increments version; (project_id, side, version) is unique."""
+    p = Project(name="label-board", slug=f"label-{uuid.uuid4().hex[:6]}")
+    session.add(p)
+    await session.flush()
+
+    ls_json_v1 = {
+        "result": [
+            {
+                "id": "abc",
+                "type": "rectanglelabels",
+                "value": {
+                    "x": 10.0,
+                    "y": 20.0,
+                    "width": 5.0,
+                    "height": 5.0,
+                    "rectanglelabels": ["R1"],
+                },
+                "from_name": "label",
+                "to_name": "image",
+                "image_rotation": 0,
+                "original_width": 1000,
+                "original_height": 800,
+            }
+        ]
+    }
+    lbl = Label(project_id=p.id, side="top", version=1, ls_json=ls_json_v1)
+    session.add(lbl)
+    await session.flush()
+
+    fetched = (
+        await session.execute(select(Label).where(Label.project_id == p.id))
+    ).scalar_one()
+    assert fetched.side == "top"
+    assert fetched.version == 1
+    assert fetched.snapshot_at is not None
+    assert fetched.snapshot_at.tzinfo is not None
+    assert fetched.ls_json["result"][0]["value"]["rectanglelabels"] == ["R1"]
+
+    # Version 2 same side OK.
+    session.add(Label(project_id=p.id, side="top", version=2, ls_json={"result": []}))
+    await session.flush()
+
+    # Duplicate (project, side, version) must fail.
+    session.add(Label(project_id=p.id, side="top", version=2, ls_json={"result": []}))
+    with pytest.raises(Exception):  # IntegrityError on UNIQUE
+        await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_label_side_check_constraint_rejects_unknown(session: AsyncSession):
+    p = Project(name="label-side-chk", slug=f"label-side-{uuid.uuid4().hex[:6]}")
+    session.add(p)
+    await session.flush()
+
+    session.add(Label(project_id=p.id, side="left", version=1, ls_json={"result": []}))
+    with pytest.raises(Exception):  # CHECK constraint
+        await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_label_cascade_deletes_with_project(session: AsyncSession):
+    p = Project(name="label-cascade", slug=f"label-cascade-{uuid.uuid4().hex[:6]}")
+    session.add(p)
+    await session.flush()
+
+    session.add(Label(project_id=p.id, side="bottom", version=1, ls_json={"result": []}))
+    await session.flush()
+    project_id = p.id
+
+    await session.delete(p)
+    await session.flush()
+
+    remaining = (
+        await session.execute(select(Label).where(Label.project_id == project_id))
+    ).scalars().all()
+    assert remaining == []

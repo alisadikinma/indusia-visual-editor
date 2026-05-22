@@ -108,6 +108,11 @@ class Project(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    labels: Mapped[list["Label"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (UniqueConstraint("slug", name="uq_projects_slug"),)
 
@@ -289,4 +294,41 @@ class PreLabel(Base):
 
     __table_args__ = (
         UniqueConstraint("project_id", "side", name="uq_pre_labels_project_side"),
+    )
+
+
+class Label(Base):
+    """Phase 6.2 — versioned LSF annotation per (project_id, side).
+
+    Stores the raw LS-JSON `result[]` exactly as emitted by the canvas's
+    onSubmitAnnotation callback. Version bumps on every save so prompt
+    diffs and prior eval-set comparisons stay reproducible. Latest
+    version per side is what M7 training reads."""
+
+    __tablename__ = "labels"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    side: Mapped[str] = mapped_column(String(8), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    ls_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    snapshot_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    project: Mapped[Project] = relationship(back_populates="labels")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id", "side", "version", name="uq_labels_project_side_version"
+        ),
     )
