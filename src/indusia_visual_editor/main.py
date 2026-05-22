@@ -9,6 +9,7 @@ import logging
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 
 from indusia_visual_editor import __version__
 from indusia_visual_editor.config import get_config
@@ -30,6 +31,19 @@ app = FastAPI(
     title="Indusia Visual Editor",
     version=__version__,
     description="Factory-user-driven PCB inspection platform.",
+)
+
+# Dev CORS: the Vue frontend runs on Vite at :5173. Production CORS will be
+# locked down at M14 via Traefik or an env-var allowlist.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 

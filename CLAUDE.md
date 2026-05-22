@@ -12,7 +12,7 @@
 | One-line | Factory-user-driven PCB inspection platform — BOM + golden sample → production inspection in hours, no YAML, no CLI |
 | Primary user | MI division operator / supervisor at PCB factories (non-coder) |
 | Repo root | `D:\Projects\indusia-visual-editor` |
-| Status | M0 ✓ · M1 Phase 1.1 ✓ · 1.2 ✓ · 1.3 ✓ Assets CRUD with fs storage + SHA256 dedup; next: Phase 1.4 Dashboard UI |
+| Status | M0 ✓ · M1 ✓ complete (1.1–1.4 all shipped); next: M2 Phase 2.1 BOM parser |
 | Plan | [docs/plans/2026-05-22-visual-editor-mvp.md](docs/plans/2026-05-22-visual-editor-mvp.md) |
 | Adoption spec | [docs/specs/label-studio-adoption.md](docs/specs/label-studio-adoption.md) |
 | LSF build spec | [docs/specs/lsf-build.md](docs/specs/lsf-build.md) |
@@ -26,7 +26,7 @@ Only commit history is authoritative — never invent state. As of 2026-05-22:
 |---|---|---|
 | Backend | FastAPI app, `GET /health`, `/api/projects` CRUD, `/api/projects/{id}/assets` upload + list + binary, DB models (Project/Asset/BomItem), `get_session` async dep, exception handlers for 404/409/413/422 all return `{status, message, data}` shape, `utils.responses.success/failed` helpers, fs storage at `IVE_STORAGE_ROOT` with SHA256 dedup | BOM parser (M2), LLM client (M3), labels (M6) |
 | Tests | 21 tests pass: health, db_connection, 3× db_models, 7× projects CRUD, 7× assets (upload, dedup, 422 kind, 413 size, traversal-safe, list, binary), 2× graphflow spike. `tests/conftest.py` clears `get_engine` lru_cache per-test. | everything else |
-| Frontend | Vue 3 + Vite 5 + TS scaffold at `web/` with router, Pinia, Tailwind, Konva deps; 1 Vitest test passes; `/` route → Dashboard.vue stub | Real Dashboard (Phase 1.4), Wizard (Phase 2.3), LSF embed (M6) |
+| Frontend | Vue 3 + Vite 5 + TS at `web/`. Routes: `/` Dashboard (live API list + create dialog → POST → router push to wizard), `/projects/:id/wizard` placeholder. Pinia `useProjectsStore` with `fetch()`/`create()`. Axios client at `api/projects.ts` (envelope-aware). `StatusBadge` 4 variants per `docs/design/dashboard-tokens.md`. CORS allowed on backend for :5173. 4 Vitest tests pass. | Wizard real impl (Phase 2.3), LSF embed (M6) |
 | Docker | `docker-compose.dev.yml` (postgres:16-alpine on host port 5433, named volume `ive-postgres-data`), dev `Dockerfile.api` + `web/Dockerfile`, `scripts/dev-{up,down}.ps1` helpers | Production Dockerfiles + Traefik (M14) |
 | DB | Alembic baseline 0001 applied: `projects`, `assets`, `bom_items` tables live with UUID PKs, TIMESTAMPTZ, JSONB extra, CHECK-constraint enums. Downgrade→upgrade cycle clean. | Future migrations per phase |
 | LSF | upstream build verified, NOT yet vendored | vendor in M6 Phase 6.1 |
