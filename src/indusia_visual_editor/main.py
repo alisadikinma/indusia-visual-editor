@@ -7,7 +7,7 @@ the canonical `{status, message, data}` envelope on error paths (CLAUDE.md
 
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -15,6 +15,7 @@ from indusia_visual_editor import __version__
 from indusia_visual_editor.config import get_config
 from indusia_visual_editor.routes.assets import router as assets_router
 from indusia_visual_editor.routes.bom import router as bom_router
+from indusia_visual_editor.routes.llm import router as llm_router
 from indusia_visual_editor.routes.projects import router as projects_router
 from indusia_visual_editor.services.asset.bom_parser import BomParseError
 from indusia_visual_editor.services.asset.image_store import (
@@ -79,9 +80,16 @@ async def _bom_parse_failed(request: Request, exc: BomParseError):
     return failed(str(exc), status_code=422)
 
 
+@app.exception_handler(HTTPException)
+async def _http_exception(request: Request, exc: HTTPException):
+    # Wrap FastAPI HTTPException into the canonical envelope (CLAUDE.md §6.1).
+    return failed(str(exc.detail), status_code=exc.status_code)
+
+
 app.include_router(projects_router)
 app.include_router(assets_router)
 app.include_router(bom_router)
+app.include_router(llm_router)
 
 
 @app.get("/health")
