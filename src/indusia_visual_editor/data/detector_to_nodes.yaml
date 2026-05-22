@@ -1,0 +1,78 @@
+# Detector preset -> graphflow node-set mapping (Phase 4.1).
+#
+# Source: plan section M4 + docs/specs/graphflow-config-schema.md section 6.1.
+# Each top-level key is one of the 13 detector preset names referenced from
+# data/defect_detector_mapping.yaml (Phase 2.2c, the defect criterion ->
+# detector preset mapping). Each value is an ORDERED list of NodeSpec dicts
+# {type, params?} the Phase 4.2 subgraph builder will splice into the
+# components/comp-<designator>.yaml subgraph between yolo_crop (input side)
+# and merge_result (output side).
+#
+# Edits to this file must be reviewed against the registered node-type
+# parameter schema at:
+#   D:\Projects\Indusia-Inspection\auto-inspect-service\src\auto_inspect_service\schemas\node_params.yaml
+# Adding a node type here that is not in the 49-name registry mirrored by
+# KNOWN_GRAPHFLOW_NODE_TYPES will trip the meta-test in
+# tests/services/adapter/test_node_map.py.
+
+yolo:
+  - type: yolo_estimator
+    params:
+      verbose: false
+  - type: transform_result
+
+yolo_fine_grained:
+  - type: yolo_estimator
+    params:
+      verbose: true
+      expand_ratio: 0.1
+  - type: transform_result
+
+anomalib_roi:
+  - type: anomaly_predictor
+  - type: anomaly_decision
+  - type: anomaly_result
+
+anomalib_whole_side:
+  - type: anomaly_dino_predictor
+  - type: anomaly_result
+
+ocr:
+  - type: ocr_model
+  - type: transform_ocr_result
+
+barcode:
+  - type: barcode_detector
+  - type: transform_barcode_result
+
+template_match:
+  - type: template_match_detector
+  - type: transform_result
+
+polarity_template:
+  - type: template_match_classifier
+    params:
+      mode: polarity
+  - type: transform_result
+
+orientation_classifier:
+  - type: orientation_classifier
+  - type: transform_result
+
+lifted_pin:
+  - type: lifted_pin_detector
+  - type: transform_result
+
+pin_count_check:
+  - type: template_match_classifier
+    params:
+      mode: pin_count
+  - type: transform_result
+
+border_alignment:
+  - type: border_alignment_detector
+  - type: transform_result
+
+threshold:
+  - type: threshold_detector
+  - type: transform_result
