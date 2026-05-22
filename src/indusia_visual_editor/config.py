@@ -24,6 +24,12 @@ class AppConfig(BaseSettings):
     storage_root: str = "./storage"
     max_asset_bytes: int = 50 * 1024 * 1024  # 50 MB
 
+    # Phase 3.1 — Ollama LLM client
+    ollama_url: str = "http://localhost:11434"
+    ollama_model_planner: str = "gemma4:31b"
+    ollama_model_prelabel: str = "gemma4:31b"
+    ollama_timeout: int = 120  # seconds
+
 
 from functools import lru_cache
 
