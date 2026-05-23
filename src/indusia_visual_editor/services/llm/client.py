@@ -16,7 +16,8 @@ models such as `gemma4:31b` expect base64 PNG/JPEG.
 from __future__ import annotations
 
 import base64
-from typing import Any
+import json
+from typing import Any, AsyncIterator
 
 import httpx
 
@@ -118,6 +119,59 @@ class OllamaClient:
         data = await self._post("/api/chat", body)
         message = data.get("message") or {}
         return str(message.get("content", ""))
+
+    async def stream_chat(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, Any]],
+        options: dict[str, Any] | None = None,
+    ) -> AsyncIterator[str]:
+        """Stream `/api/chat` with `stream=true`. Yields the assistant's
+        content deltas as they arrive — one yield per JSONL line whose
+        `message.content` is non-empty.
+
+        Ollama emits NDJSON over the response body; each line is a JSON
+        object with `{message: {role, content}, done: bool}`. The final
+        line carries `done=true` with usually-empty content; we end the
+        iteration when we hit it. Transport / HTTP errors are wrapped
+        into the same `LlmError` family as the unary calls so the route
+        layer can map cleanly.
+        """
+        body: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "stream": True,
+        }
+        if options:
+            body["options"] = options
+
+        try:
+            async with self._http.stream("POST", "/api/chat", json=body) as r:
+                if not (200 <= r.status_code < 300):
+                    detail = (await r.aread()).decode("utf-8", "replace")[:300]
+                    raise LlmResponseError(
+                        f"Ollama /api/chat stream returned {r.status_code}: {detail}"
+                    )
+                async for line in r.aiter_lines():
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except ValueError as exc:
+                        raise LlmResponseError(
+                            f"Ollama /api/chat stream emitted non-JSON line: {line[:200]}"
+                        ) from exc
+                    chunk = (event.get("message") or {}).get("content", "")
+                    if chunk:
+                        yield str(chunk)
+                    if event.get("done") is True:
+                        return
+        except httpx.TimeoutException as exc:
+            raise LlmTimeoutError(f"Ollama stream timed out: {exc}") from exc
+        except (httpx.ConnectError, httpx.TransportError) as exc:
+            raise LlmConnectionError(f"Could not reach Ollama stream: {exc}") from exc
 
     async def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         try:
