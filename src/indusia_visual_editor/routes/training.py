@@ -19,15 +19,19 @@ returned a row.
 
 from __future__ import annotations
 
+import json
+import logging
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sse_starlette.sse import EventSourceResponse
 
 from indusia_visual_editor.config import get_config
 from indusia_visual_editor.db.models import AdaptRun, TrainRun
-from indusia_visual_editor.db.session import get_session
+from indusia_visual_editor.db.session import get_session, get_sessionmaker
 from indusia_visual_editor.schemas.training import TrainRunRead
 from indusia_visual_editor.services.inspect_service.exceptions import (
     InspectServiceConnectionError,
@@ -40,6 +44,9 @@ from indusia_visual_editor.services.inspect_service.training_client import (
 )
 from indusia_visual_editor.services.project.crud import get_project
 from indusia_visual_editor.utils.responses import success
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter(prefix="/api/projects/{project_id}/training", tags=["training"])
@@ -146,3 +153,111 @@ async def list_training_runs(
         )
     ).scalars().all()
     return success(data=[_serialize(r) for r in rows])
+
+
+# ---------------- Phase 7.4 — SSE relay ----------------
+#
+# The stream endpoint sits at `/api/training/{run_id}/stream` (not nested
+# under `/projects/{id}`) so the frontend can re-attach by run_id alone,
+# which is the identifier the start endpoint returns. A separate router
+# is used because the prefix differs from the project-scoped router above.
+
+stream_router = APIRouter(prefix="/api/training", tags=["training"])
+
+# Event-name → terminal? map. The service contract — verified against
+# auto-inspect-service during the M0 Phase 0.2 spike — is that `succeeded`,
+# `failed`, and `cancelled` are terminal; `running` and `epoch` are
+# intermediate. Any other event name passes through to the client without
+# a row write (forward-compatible for future event kinds).
+_TERMINAL_EVENTS = {"succeeded", "failed", "cancelled"}
+
+
+async def _apply_event_to_row(run_id: uuid.UUID, event: dict) -> None:
+    """Persist a single SSE event against the TrainRun row.
+
+    Each event opens its own short-lived session — the EventSourceResponse
+    generator outlives the request-scoped session, and holding a single
+    session open for hours would tie up a pool connection.
+    """
+
+    kind = event.get("event")
+    factory = get_sessionmaker()
+    async with factory() as s:
+        row = await s.get(TrainRun, run_id)
+        if row is None:
+            return
+        if kind == "running" and row.status == "pending":
+            row.status = "running"
+        elif kind == "succeeded":
+            row.status = "succeeded"
+            row.metrics_json = event.get("metrics")
+            row.ended_at = datetime.now(timezone.utc)
+        elif kind == "failed":
+            row.status = "failed"
+            row.error_text = event.get("error") or "training failed"
+            row.ended_at = datetime.now(timezone.utc)
+        elif kind == "cancelled":
+            row.status = "cancelled"
+            row.ended_at = datetime.now(timezone.utc)
+        await s.commit()
+
+
+async def _mark_relay_failure(run_id: uuid.UUID, exc: Exception) -> None:
+    """Mark the row failed when the relay itself cannot proceed (the
+    auto-inspect-service stream errored before any terminal event)."""
+    factory = get_sessionmaker()
+    async with factory() as s:
+        row = await s.get(TrainRun, run_id)
+        if row is None:
+            return
+        row.status = "failed"
+        row.error_text = f"stream relay error: {exc}"
+        row.ended_at = datetime.now(timezone.utc)
+        await s.commit()
+
+
+@stream_router.get("/{run_id}/stream")
+async def stream_training_progress(run_id: uuid.UUID):
+    """Relay the auto-inspect-service SSE progress events to our caller.
+
+    Returns 404 if the run isn't known. Otherwise opens the upstream stream,
+    forwards each `data:` event verbatim, and updates the TrainRun row in
+    place as the lifecycle advances. Service-side transport errors mark the
+    row `failed` with `error_text` populated, then surface a final `error`
+    event on the wire so the operator-facing UI can render the failure.
+    """
+
+    factory = get_sessionmaker()
+    async with factory() as s:
+        row = await s.get(TrainRun, run_id)
+        if row is None:
+            raise HTTPException(
+                status_code=404, detail=f"train_run {run_id} not found"
+            )
+        service_job_id = row.service_job_id
+
+    cfg = get_config()
+
+    async def event_generator():
+        client = _training_client_factory(
+            base_url=cfg.inspect_service_url,
+            timeout=cfg.inspect_service_timeout,
+        )
+        try:
+            try:
+                async for event in client.stream_progress(service_job_id):
+                    await _apply_event_to_row(run_id, event)
+                    yield {"data": json.dumps(event)}
+                    if event.get("event") in _TERMINAL_EVENTS:
+                        # Terminal — drain remaining iterator and stop.
+                        break
+            except InspectServiceError as exc:
+                logger.warning(
+                    "training stream relay error for run %s: %s", run_id, exc
+                )
+                await _mark_relay_failure(run_id, exc)
+                yield {"data": json.dumps({"event": "error", "error": str(exc)})}
+        finally:
+            await client.aclose()
+
+    return EventSourceResponse(event_generator())

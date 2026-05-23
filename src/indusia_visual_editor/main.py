@@ -19,7 +19,10 @@ from indusia_visual_editor.routes.bom import router as bom_router
 from indusia_visual_editor.routes.labels import router as labels_router
 from indusia_visual_editor.routes.llm import router as llm_router
 from indusia_visual_editor.routes.projects import router as projects_router
-from indusia_visual_editor.routes.training import router as training_router
+from indusia_visual_editor.routes.training import (
+    router as training_router,
+    stream_router as training_stream_router,
+)
 from indusia_visual_editor.services.asset.bom_parser import BomParseError
 from indusia_visual_editor.services.asset.image_store import (
     AssetNotFoundError,
@@ -96,6 +99,7 @@ app.include_router(llm_router)
 app.include_router(adapt_router)
 app.include_router(labels_router)
 app.include_router(training_router)
+app.include_router(training_stream_router)
 
 
 @app.get("/health")
