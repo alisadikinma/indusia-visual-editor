@@ -40,6 +40,15 @@ class AppConfig(BaseSettings):
     inspect_service_url: str = "http://localhost:8001"
     inspect_service_timeout: int = 30  # seconds (start call only — SSE is long-lived)
 
+    # Phase 10.1 — `ais` CLI subprocess registry boundary. See
+    # docs/specs/ais-model-push.md. Working directory MUST be inside the
+    # model-registry git repo (operator runs `ais model setup` once per
+    # host). The CLI is not bundled with indusia-visual-editor; production
+    # hosts install it from auto-inspect-service per the spec.
+    ais_binary: str = "ais"  # absolute path or PATH lookup
+    registry_root: str = "./registry"
+    ais_push_timeout_secs: float = 300.0  # 5 min — covers slow LFS pushes
+
 
 from functools import lru_cache
 
