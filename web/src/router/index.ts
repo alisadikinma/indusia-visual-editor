@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router";
 
 import Dashboard from "@/views/Dashboard.vue";
+import EvalView from "@/views/EvalView.vue";
 import Gate1View from "@/views/Gate1View.vue";
 import LabelingView from "@/views/LabelingView.vue";
 import ProjectWizard from "@/views/ProjectWizard.vue";
@@ -31,6 +32,11 @@ export const routes: RouteRecordRaw[] = [
     path: "/projects/:id/training/:runId",
     name: "training-progress",
     component: TrainingProgressView,
+  },
+  {
+    path: "/projects/:id/eval/:runId",
+    name: "eval",
+    component: EvalView,
   },
 ];
 
