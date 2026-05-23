@@ -18,6 +18,7 @@ from indusia_visual_editor.routes.assets import router as assets_router
 from indusia_visual_editor.routes.bom import router as bom_router
 from indusia_visual_editor.routes.dataset_stats import router as dataset_stats_router
 from indusia_visual_editor.routes.deploy import router as deploy_router
+from indusia_visual_editor.routes.edges import router as edges_router
 from indusia_visual_editor.routes.eval import router as eval_router
 from indusia_visual_editor.routes.labels import router as labels_router
 from indusia_visual_editor.routes.llm import router as llm_router
@@ -106,6 +107,7 @@ app.include_router(training_router)
 app.include_router(training_stream_router)
 app.include_router(eval_router)
 app.include_router(deploy_router)
+app.include_router(edges_router)
 
 
 @app.get("/health")

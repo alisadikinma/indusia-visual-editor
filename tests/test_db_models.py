@@ -25,6 +25,7 @@ from indusia_visual_editor.db.models import (
     AssetKind,
     BomItem,
     Deployment,
+    Edge,
     InspectScope,
     Label,
     PreLabel,
@@ -523,3 +524,40 @@ async def test_deployment_cascade_deletes_with_train_run(session: AsyncSession):
         )
     ).scalars().all()
     assert remaining == []
+
+
+# ---------------- Phase 11.1 — edges table ----------------
+
+
+@pytest.mark.asyncio
+async def test_edge_row_persists_with_default_policy(session: AsyncSession):
+    name = f"edge-mod-{uuid.uuid4().hex[:6]}"
+    edge = Edge(
+        name=name,
+        webhook_url="http://edge.local:8000/api/models/refresh-cache",
+    )
+    session.add(edge)
+    await session.flush()
+
+    fetched = (
+        await session.execute(select(Edge).where(Edge.name == name))
+    ).scalar_one()
+    assert fetched.webhook_url.endswith("/refresh-cache")
+    # Default policy applied by server_default.
+    assert fetched.version_policy == {"mode": "auto_pull_latest"}
+    assert fetched.registered_at is not None
+    assert fetched.registered_at.tzinfo is not None
+    assert fetched.last_seen_at is None
+
+
+@pytest.mark.asyncio
+async def test_edge_name_unique_constraint(session: AsyncSession):
+    name = f"edge-uniq-{uuid.uuid4().hex[:6]}"
+    session.add(
+        Edge(name=name, webhook_url="http://a.local:8000/r"),
+    )
+    await session.flush()
+
+    session.add(Edge(name=name, webhook_url="http://b.local:8000/r"))
+    with pytest.raises(Exception):
+        await session.flush()

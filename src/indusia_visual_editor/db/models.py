@@ -467,3 +467,45 @@ class Deployment(Base):
 
     project: Mapped[Project] = relationship(back_populates="deployments")
     train_run: Mapped[TrainRun] = relationship(back_populates="deployments")
+
+
+class Edge(Base):
+    """Phase 11.1 — edge node registry.
+
+    Each row identifies a physical edge box on the factory floor: its
+    human-readable name, the webhook URL the visual-editor calls when a
+    deployment ships, and a per-edge `version_policy` JSONB. Policies:
+
+      - `{"mode": "auto_pull_latest"}` — edge pulls latest on every notify
+      - `{"mode": "pinned", "model_name": "...", "version": "..."}`
+        — edge stays on the named version regardless of notify content
+        (manual rollback via PUT /api/edges/{id}/pin, Phase 11.3)
+
+    `last_seen_at` is updated by future edge health-ping endpoints (M14);
+    M11 leaves it null. There is no cascade FK to projects — edges serve
+    multiple projects across their lifetime.
+    """
+
+    __tablename__ = "edges"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    webhook_url: Mapped[str] = mapped_column(Text, nullable=False)
+    version_policy: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        default=lambda: {"mode": "auto_pull_latest"},
+        server_default='{"mode": "auto_pull_latest"}',
+    )
+    registered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (UniqueConstraint("name", name="uq_edges_name"),)
