@@ -28,10 +28,13 @@ from indusia_visual_editor.db.models import (
     Edge,
     InspectScope,
     Label,
+    Organization,
     PreLabel,
     Project,
     ProjectStatus,
     TrainRun,
+    User,
+    UserRole,
 )
 
 
@@ -561,3 +564,137 @@ async def test_edge_name_unique_constraint(session: AsyncSession):
     session.add(Edge(name=name, webhook_url="http://b.local:8000/r"))
     with pytest.raises(Exception):
         await session.flush()
+
+
+# ---------------- Phase 13.1 — organizations + users ----------------
+
+
+@pytest.mark.asyncio
+async def test_organization_and_user_roundtrip(session: AsyncSession):
+    org = Organization(
+        name=f"Test Org {uuid.uuid4().hex[:6]}",
+        slug=f"test-org-{uuid.uuid4().hex[:6]}",
+    )
+    session.add(org)
+    await session.flush()
+
+    user = User(
+        organization_id=org.id,
+        email=f"u-{uuid.uuid4().hex[:6]}@example.test",
+        password_hash="$2b$12$abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMN",
+        role=UserRole.ENGINEER,
+    )
+    session.add(user)
+    await session.flush()
+
+    fetched = (
+        await session.execute(select(User).where(User.id == user.id))
+    ).scalar_one()
+    assert fetched.organization_id == org.id
+    assert fetched.role == UserRole.ENGINEER
+    assert fetched.created_at is not None
+    assert fetched.created_at.tzinfo is not None
+
+
+@pytest.mark.asyncio
+async def test_user_email_unique_constraint(session: AsyncSession):
+    org = Organization(
+        name="dup-email-org",
+        slug=f"dup-email-{uuid.uuid4().hex[:6]}",
+    )
+    session.add(org)
+    await session.flush()
+
+    email = f"shared-{uuid.uuid4().hex[:6]}@example.test"
+    session.add(
+        User(
+            organization_id=org.id,
+            email=email,
+            password_hash="x",
+            role=UserRole.VIEWER,
+        )
+    )
+    await session.flush()
+    session.add(
+        User(
+            organization_id=org.id,
+            email=email,
+            password_hash="y",
+            role=UserRole.ADMIN,
+        )
+    )
+    with pytest.raises(Exception):
+        await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_user_role_check_constraint_rejects_unknown(session: AsyncSession):
+    org = Organization(
+        name="role-chk-org",
+        slug=f"role-chk-{uuid.uuid4().hex[:6]}",
+    )
+    session.add(org)
+    await session.flush()
+
+    session.add(
+        User(
+            organization_id=org.id,
+            email=f"bogus-{uuid.uuid4().hex[:6]}@example.test",
+            password_hash="x",
+            role="superadmin",  # type: ignore[arg-type]
+        )
+    )
+    with pytest.raises(Exception):
+        await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_user_cascade_deletes_with_organization(session: AsyncSession):
+    org = Organization(
+        name="cascade-org",
+        slug=f"cascade-{uuid.uuid4().hex[:6]}",
+    )
+    session.add(org)
+    await session.flush()
+    user_email = f"casc-{uuid.uuid4().hex[:6]}@example.test"
+    session.add(
+        User(
+            organization_id=org.id,
+            email=user_email,
+            password_hash="x",
+            role=UserRole.ENGINEER,
+        )
+    )
+    await session.flush()
+    org_id = org.id
+
+    await session.delete(org)
+    await session.flush()
+
+    remaining = (
+        await session.execute(select(User).where(User.organization_id == org_id))
+    ).scalars().all()
+    assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_project_can_be_assigned_to_organization(session: AsyncSession):
+    org = Organization(
+        name="proj-org",
+        slug=f"proj-org-{uuid.uuid4().hex[:6]}",
+    )
+    session.add(org)
+    await session.flush()
+
+    project = Project(
+        name="org-scoped-board",
+        slug=f"org-board-{uuid.uuid4().hex[:6]}",
+        organization_id=org.id,
+    )
+    session.add(project)
+    await session.flush()
+
+    fetched = (
+        await session.execute(select(Project).where(Project.id == project.id))
+    ).scalar_one()
+    assert fetched.organization_id == org.id

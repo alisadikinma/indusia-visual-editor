@@ -52,11 +52,102 @@ class InspectScope(str, enum.Enum):
     SKIPPED = "skipped"
 
 
+class UserRole(str, enum.Enum):
+    ADMIN = "admin"
+    ENGINEER = "engineer"
+    VIEWER = "viewer"
+
+
+class Organization(Base):
+    """Phase 13.1 — tenancy boundary.
+
+    Projects belong to one organization; users belong to one organization.
+    A user can only ever see projects in their own organization. v1 is
+    single-tenant in practice (one seed org) but the column is wired so
+    that v1.5 SaaS onboarding doesn't require a schema migration.
+    """
+
+    __tablename__ = "organizations"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    slug: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    users: Mapped[list["User"]] = relationship(
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    projects: Mapped[list["Project"]] = relationship(
+        back_populates="organization",
+    )
+
+    __table_args__ = (UniqueConstraint("slug", name="uq_organizations_slug"),)
+
+
+class User(Base):
+    """Phase 13.1 — operator account.
+
+    `password_hash` is a bcrypt digest produced by
+    `services/auth/passwords.hash_password`. Plaintext NEVER lives in
+    the database, logs, or error envelopes. `role` is one of admin /
+    engineer / viewer (enforced by CHECK constraint at the migration
+    level) and drives the RBAC gates in Phase 13.4.
+    """
+
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[UserRole] = mapped_column(
+        Enum(
+            UserRole,
+            name="user_role",
+            native_enum=False,
+            length=16,
+            values_callable=lambda enum_cls: [e.value for e in enum_cls],
+        ),
+        nullable=False,
+        default=UserRole.ENGINEER,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    organization: Mapped[Organization] = relationship(back_populates="users")
+
+    __table_args__ = (UniqueConstraint("email", name="uq_users_email"),)
+
+
 class Project(Base):
     __tablename__ = "projects"
 
     id: Mapped[uuid.UUID] = mapped_column(
         PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -127,6 +218,9 @@ class Project(Base):
         back_populates="project",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+    organization: Mapped[Organization | None] = relationship(
+        back_populates="projects",
     )
 
     __table_args__ = (UniqueConstraint("slug", name="uq_projects_slug"),)
