@@ -49,6 +49,16 @@ class AppConfig(BaseSettings):
     registry_root: str = "./registry"
     ais_push_timeout_secs: float = 300.0  # 5 min — covers slow LFS pushes
 
+    # M13 — JWT bearer auth. Secret MUST be overridden via IVE_AUTH_JWT_SECRET
+    # in production; the dev default is non-secret and will be refused by the
+    # auth layer if it survives into a non-dev env (Phase 14 hardening).
+    auth_jwt_secret: str = "dev-only-jwt-secret-change-me"
+    auth_jwt_algorithm: str = "HS256"
+    auth_jwt_ttl_seconds: int = 3600  # 1 hour access token
+    auth_refresh_ttl_seconds: int = 60 * 60 * 24 * 14  # 14 days
+    auth_refresh_cookie_name: str = "ive_refresh"
+    auth_refresh_cookie_secure: bool = False  # flipped to True behind Traefik HTTPS
+
 
 from functools import lru_cache
 
