@@ -1,0 +1,15 @@
+# Frontend build context: only what `pnpm install + pnpm build` needs.
+
+node_modules/
+dist/
+.vite/
+.eslintcache
+
+# Tests stay out of the production runtime layer.
+src/__tests__/
+
+# IDE / OS noise.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

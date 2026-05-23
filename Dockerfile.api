@@ -1,5 +1,42 @@
-# Dev image for the FastAPI service. NOT production-grade — no multi-stage,
-# no non-root user, no asset stripping. M14 ships the production Dockerfile.
+# Dual-target Dockerfile: `dev` (HMR-friendly) and `runtime` (production).
+#
+# Dev build:        docker build --target dev    -t indusia-api:dev    -f Dockerfile.api .
+# Production build: docker build --target runtime -t indusia-api:prod  -f Dockerfile.api .
+#
+# The runtime stage:
+#   - multi-stage so the build toolchain (poetry, gcc) never ships
+#   - drops to a non-root `ive` user (uid 10001) before EXPOSE
+#   - copies only the editable package + runtime venv (no tests, no docs)
+#   - no --reload; uvicorn workers are tuned via env (IVE_APP_WORKERS)
+
+# ---------------- builder ----------------
+FROM python:3.12-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_NO_INTERACTION=1 \
+    POETRY_VERSION=2.4.1 \
+    PIP_NO_CACHE_DIR=1
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl build-essential \
+ && rm -rf /var/lib/apt/lists/* \
+ && curl -sSL https://install.python-poetry.org | python -
+
+ENV PATH="/root/.local/bin:${PATH}"
+
+WORKDIR /app
+
+# Install dependencies first so the lockfile change invalidates fewer layers.
+COPY pyproject.toml poetry.lock README.md ./
+RUN poetry install --only main --no-root --no-interaction
+
+# Now bring in the source and install the project itself.
+COPY src ./src
+RUN poetry install --only main --no-interaction
+
+# ---------------- dev (no multi-stage gain; kept for parity) ----------------
 FROM python:3.12-slim AS dev
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -17,7 +54,7 @@ ENV PATH="/root/.local/bin:${PATH}"
 
 WORKDIR /app
 
-COPY pyproject.toml poetry.lock ./
+COPY pyproject.toml poetry.lock README.md ./
 RUN poetry install --no-root --no-interaction
 
 COPY src ./src
@@ -26,3 +63,36 @@ COPY tests ./tests
 EXPOSE 8002
 
 CMD ["uvicorn", "indusia_visual_editor.main:app", "--host", "0.0.0.0", "--port", "8002", "--reload"]
+
+# ---------------- runtime ----------------
+FROM python:3.12-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/.venv/bin:${PATH}" \
+    IVE_APP_HOST=0.0.0.0 \
+    IVE_APP_PORT=8002
+
+# Bare-minimum runtime libs. libpq for asyncpg, libgomp for opencv-python.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libpq5 libgomp1 \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --system --gid 10001 ive \
+ && useradd --system --no-create-home --uid 10001 --gid ive ive
+
+WORKDIR /app
+
+# Copy the resolved venv from the builder and the application source.
+COPY --from=builder --chown=ive:ive /app/.venv /app/.venv
+COPY --chown=ive:ive src ./src
+COPY --chown=ive:ive alembic.ini ./alembic.ini
+COPY --chown=ive:ive alembic ./alembic
+COPY --chown=ive:ive pyproject.toml ./pyproject.toml
+
+USER ive
+
+EXPOSE 8002
+
+# Workers tuned via IVE_APP_WORKERS (default 2 — Traefik can scale horizontally
+# with multiple replicas if more headroom is needed).
+CMD ["sh", "-c", "uvicorn indusia_visual_editor.main:app --host ${IVE_APP_HOST} --port ${IVE_APP_PORT} --workers ${IVE_APP_WORKERS:-2}"]

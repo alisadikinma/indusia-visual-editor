@@ -1,0 +1,50 @@
+# Keep production images lean: no dev-only artefacts, no version control,
+# no docs / specs / runbooks, no local storage tree.
+
+.git/
+.github/
+.gitignore
+.gitattributes
+
+# Tests + spike scripts never ship in runtime images.
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Documentation lives in the repo for humans, not the runtime.
+docs/
+CHANGELOG.md
+*.md
+# Poetry reads README.md while resolving the project; whitelist just that one.
+!README.md
+
+# Local virtualenvs / build caches.
+.venv/
+venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Frontend node modules / Vite cache (the web/Dockerfile has its own ignore).
+web/node_modules/
+web/dist/
+web/.vite/
+
+# Local storage tree (BOMs, golden images, model artefacts).
+storage/
+models/
+registry/
+
+# IDE / OS noise.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Dev compose + scripts shouldn't end up baked into prod images.
+docker-compose.dev.yml
+scripts/
