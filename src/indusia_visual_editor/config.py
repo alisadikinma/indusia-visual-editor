@@ -34,6 +34,12 @@ class AppConfig(BaseSettings):
     # contract between visual-editor and auto-inspect-service).
     models_root: str = "./models"
 
+    # Phase 7.1 — auto-inspect-service HTTP boundary. The visual-editor
+    # POSTs `/api/training/start` and consumes the SSE progress stream;
+    # never modifies the sibling repo (see CLAUDE.md §3).
+    inspect_service_url: str = "http://localhost:8001"
+    inspect_service_timeout: int = 30  # seconds (start call only — SSE is long-lived)
+
 
 from functools import lru_cache
 
