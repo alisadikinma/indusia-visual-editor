@@ -16,6 +16,7 @@ from indusia_visual_editor.config import get_config
 from indusia_visual_editor.routes.adapt import router as adapt_router
 from indusia_visual_editor.routes.assets import router as assets_router
 from indusia_visual_editor.routes.bom import router as bom_router
+from indusia_visual_editor.routes.labels import router as labels_router
 from indusia_visual_editor.routes.llm import router as llm_router
 from indusia_visual_editor.routes.projects import router as projects_router
 from indusia_visual_editor.services.asset.bom_parser import BomParseError
@@ -92,6 +93,7 @@ app.include_router(assets_router)
 app.include_router(bom_router)
 app.include_router(llm_router)
 app.include_router(adapt_router)
+app.include_router(labels_router)
 
 
 @app.get("/health")
