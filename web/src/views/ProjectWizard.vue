@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useRoute } from "vue-router";
+import { RouterLink, useRoute } from "vue-router";
 
 import BomTable from "../components/BomTable.vue";
 import PreLabelPanel from "../components/PreLabelPanel.vue";
@@ -81,13 +81,19 @@ function onDragLeave() {
         </span>
         Golden Sample
       </li>
-      <li class="flex items-center gap-2 text-text-tertiary">
+      <li class="flex items-center gap-2 text-text-primary">
         <span
           class="flex h-6 w-6 items-center justify-center rounded-full border border-border-default"
         >
           3
         </span>
-        Labeling
+        <RouterLink
+          :to="`/projects/${projectId}/labeling`"
+          class="font-semibold text-primary underline hover:text-primary-hover"
+          data-testid="wizard-step3-link"
+        >
+          Labeling Canvas
+        </RouterLink>
       </li>
     </ol>
 
