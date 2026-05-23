@@ -1,0 +1,129 @@
+# Production stack for indusia-visual-editor.
+#
+# Topology: Traefik terminates TLS on :443 and proxies to api / web. Postgres
+# lives behind the same docker network so only the api can reach it; no host
+# port mapping. Ollama is intentionally external (lives on its dedicated GPU
+# box per CLAUDE.md §3) so this compose file does NOT spin up an LLM.
+#
+# Bring up:
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+# The .env.prod file (NOT committed) must define:
+#   IVE_AUTH_JWT_SECRET=<32+ random bytes>
+#   IVE_OLLAMA_URL=https://ollama.internal:11434
+#   POSTGRES_PASSWORD=<long random>
+#   ACME_EMAIL=ops@your-domain
+#   PUBLIC_HOST=indusia.your-domain
+#   PUBLIC_API_HOST=api.indusia.your-domain
+# See docs/runbooks/deploy.md for the full bootstrap procedure.
+
+services:
+  traefik:
+    image: traefik:v3.2
+    container_name: ive-traefik
+    restart: unless-stopped
+    command:
+      - "--configFile=/etc/traefik/traefik.yml"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infra/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./infra/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+      - traefik-acme:/letsencrypt
+    networks:
+      - ive-edge
+
+  api:
+    image: indusia-api:prod
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      target: runtime
+    container_name: ive-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      IVE_DATABASE_URL: postgresql+asyncpg://ive:${POSTGRES_PASSWORD}@postgres:5432/ive
+      IVE_APP_HOST: 0.0.0.0
+      IVE_APP_PORT: 8002
+      IVE_APP_WORKERS: 2
+      IVE_LOG_LEVEL: INFO
+      IVE_AUTH_JWT_SECRET: ${IVE_AUTH_JWT_SECRET}
+      IVE_AUTH_REFRESH_COOKIE_SECURE: "true"
+      IVE_OLLAMA_URL: ${IVE_OLLAMA_URL}
+    labels:
+      - "traefik.enable=true"
+    networks:
+      - ive-edge
+      - ive-internal
+
+  web:
+    image: indusia-web:prod
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: ive-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    labels:
+      - "traefik.enable=true"
+    networks:
+      - ive-edge
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ive-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ive
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ive
+    volumes:
+      - ive-postgres-prod:/var/lib/postgresql/data
+      - ./infra/scripts:/usr/local/bin/ive-scripts:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ive -d ive"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      - ive-internal
+
+  # Ofelia schedules pg_backup.sh nightly (see Phase 14.3).
+  backup-scheduler:
+    image: mcuadros/ofelia:latest
+    container_name: ive-backup-scheduler
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: daemon --docker
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - "ofelia.enabled=true"
+      - "ofelia.job-exec.pg-backup.schedule=@daily"
+      - "ofelia.job-exec.pg-backup.container=ive-postgres"
+      - "ofelia.job-exec.pg-backup.command=/usr/local/bin/ive-scripts/pg_backup.sh"
+    networks:
+      - ive-internal
+
+networks:
+  ive-edge:
+    name: ive-edge
+  ive-internal:
+    name: ive-internal
+    internal: true
+
+volumes:
+  ive-postgres-prod:
+    name: ive-postgres-prod
+  traefik-acme:
+    name: ive-traefik-acme

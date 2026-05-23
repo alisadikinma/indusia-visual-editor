@@ -1,0 +1,55 @@
+# Traefik v3 dynamic configuration. File provider — Traefik watches this
+# file and reloads on change with no restart needed.
+#
+# Routers route Host(`...`) traffic to services. Services are pointers at the
+# upstream container address. We use the file provider here instead of the
+# Docker provider's per-container labels for two reasons:
+#   1. The full routing topology lives in one reviewable diff
+#   2. We can stand up additional environments by parameterising this file
+#      (env-rendered per host) without touching compose.
+
+http:
+  middlewares:
+    secure-headers:
+      headers:
+        sslRedirect: true
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: strict-origin-when-cross-origin
+
+  routers:
+    api:
+      entryPoints:
+        - websecure
+      rule: "Host(`api.indusia.example`)"
+      service: api-service
+      middlewares:
+        - secure-headers
+      tls:
+        certResolver: letsencrypt
+
+    frontend:
+      entryPoints:
+        - websecure
+      rule: "Host(`indusia.example`)"
+      service: web-service
+      middlewares:
+        - secure-headers
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    api-service:
+      loadBalancer:
+        servers:
+          - url: "http://api:8002"
+        passHostHeader: true
+
+    web-service:
+      loadBalancer:
+        servers:
+          - url: "http://web:8080"
+        passHostHeader: true
