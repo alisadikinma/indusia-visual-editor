@@ -16,6 +16,7 @@ from indusia_visual_editor.schemas.projects import (
     ProjectRead,
     ProjectUpdate,
 )
+from indusia_visual_editor.services.auth.dependencies import get_current_user
 from indusia_visual_editor.services.project.crud import (
     create_project,
     delete_project,
@@ -33,7 +34,11 @@ def _serialize(project) -> dict:
     return ProjectRead.model_validate(project).model_dump(mode="json")
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
+)
 async def create_project_route(
     payload: ProjectCreate,
     session: AsyncSession = Depends(get_session),
@@ -61,7 +66,7 @@ async def get_project_route(
     return success(data=_serialize(project))
 
 
-@router.put("/{project_id}")
+@router.put("/{project_id}", dependencies=[Depends(get_current_user)])
 async def update_project_route(
     project_id: uuid.UUID,
     payload: ProjectUpdate,
@@ -71,7 +76,7 @@ async def update_project_route(
     return success(data=_serialize(project), message="project updated")
 
 
-@router.delete("/{project_id}")
+@router.delete("/{project_id}", dependencies=[Depends(get_current_user)])
 async def delete_project_route(
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),

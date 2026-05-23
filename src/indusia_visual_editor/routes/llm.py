@@ -32,6 +32,7 @@ from indusia_visual_editor.db.session import get_session
 from indusia_visual_editor.schemas.llm import ProposedPipelineRead
 from indusia_visual_editor.schemas.prelabel import PreLabelRunRead
 from indusia_visual_editor.services.asset.image_store import absolute_path
+from indusia_visual_editor.services.auth.dependencies import get_current_user
 from indusia_visual_editor.services.llm.client import OllamaClient
 from indusia_visual_editor.services.llm.exceptions import (
     LlmConnectionError,
@@ -116,7 +117,11 @@ def _serialize(row: ProposedPipelineRow) -> dict:
     }
 
 
-@router.post("/plan", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/plan",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
+)
 async def create_plan(
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
@@ -220,7 +225,11 @@ def _serialize_prelabel(row: PreLabel) -> dict:
     }
 
 
-@router.post("/prelabel", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/prelabel",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
+)
 async def create_prelabel(
     project_id: uuid.UUID,
     side: str,

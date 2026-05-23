@@ -31,6 +31,7 @@ from indusia_visual_editor.services.adapter.compose import (
     NoPlanError,
     compose_from_project,
 )
+from indusia_visual_editor.services.auth.dependencies import get_current_user
 from indusia_visual_editor.services.project.crud import get_project
 from indusia_visual_editor.utils.responses import success
 
@@ -43,7 +44,11 @@ def _serialize(row: AdaptRun) -> dict:
     return AdaptRunRead.model_validate(row).model_dump(mode="json")
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
+)
 async def create_adapt_run(
     project_id: uuid.UUID,
     payload: AdaptRequest,

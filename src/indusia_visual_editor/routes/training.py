@@ -35,6 +35,7 @@ from indusia_visual_editor.db.session import get_session, get_sessionmaker
 from indusia_visual_editor.routes import llm as _llm_route_module
 from indusia_visual_editor.routes.dataset_stats import compute_dataset_stats
 from indusia_visual_editor.schemas.training import TrainRunRead
+from indusia_visual_editor.services.auth.dependencies import get_current_user
 from indusia_visual_editor.services.inspect_service.exceptions import (
     InspectServiceConnectionError,
     InspectServiceError,
@@ -81,7 +82,11 @@ def _serialize(row: TrainRun) -> dict:
     return TrainRunRead.model_validate(row).model_dump(mode="json")
 
 
-@router.post("/start", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/start",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
+)
 async def start_training(
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
@@ -148,7 +153,7 @@ async def start_training(
     )
 
 
-@router.post("/suggest-hyperparams")
+@router.post("/suggest-hyperparams", dependencies=[Depends(get_current_user)])
 async def suggest_training_hyperparams(
     project_id: uuid.UUID,
     side: str,

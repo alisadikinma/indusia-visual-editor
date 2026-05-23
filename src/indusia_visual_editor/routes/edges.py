@@ -25,6 +25,7 @@ from indusia_visual_editor.schemas.edges import (
     EdgeRead,
     EdgeUpdate,
 )
+from indusia_visual_editor.services.auth.dependencies import get_current_user
 from indusia_visual_editor.utils.responses import success
 
 
@@ -38,7 +39,11 @@ def _serialize(row: Edge) -> dict[str, Any]:
     return EdgeRead.model_validate(row).model_dump(mode="json")
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
+)
 async def register_edge(
     body: EdgeCreate,
     session: AsyncSession = Depends(get_session),
@@ -72,7 +77,7 @@ async def list_edges(session: AsyncSession = Depends(get_session)):
     return success(data=[_serialize(r) for r in rows])
 
 
-@router.put("/{edge_id}")
+@router.put("/{edge_id}", dependencies=[Depends(get_current_user)])
 async def update_edge_policy(
     edge_id: uuid.UUID,
     body: EdgeUpdate,
@@ -87,7 +92,7 @@ async def update_edge_policy(
     return success(data=_serialize(row))
 
 
-@router.put("/{edge_id}/pin")
+@router.put("/{edge_id}/pin", dependencies=[Depends(get_current_user)])
 async def pin_edge_version(
     edge_id: uuid.UUID,
     body: EdgePin,

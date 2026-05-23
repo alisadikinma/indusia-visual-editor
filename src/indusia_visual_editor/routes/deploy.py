@@ -33,6 +33,7 @@ from indusia_visual_editor.config import get_config
 from indusia_visual_editor.db.models import Deployment, TrainRun
 from indusia_visual_editor.db.session import get_session
 from indusia_visual_editor.schemas.deploy import DeploymentRead
+from indusia_visual_editor.services.auth.dependencies import get_current_user
 from indusia_visual_editor.services.deploy.registry import (
     PushResult,
     push_model as _real_push_model,
@@ -99,7 +100,11 @@ def _build_model_version(run: TrainRun) -> str:
     return f"{ts}-{str(run.id)[:6]}"
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
+)
 async def promote_to_production(
     project_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),

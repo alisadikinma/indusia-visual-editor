@@ -29,6 +29,7 @@ from indusia_visual_editor.config import get_config
 from indusia_visual_editor.db.models import ChatSession, Project
 from indusia_visual_editor.db.session import get_session, get_sessionmaker
 from indusia_visual_editor.schemas.chat import ChatSessionRead, ChatStreamRequest
+from indusia_visual_editor.services.auth.dependencies import get_current_user
 from indusia_visual_editor.services.llm.chat import build_chat_context
 from indusia_visual_editor.services.llm.client import OllamaClient
 from indusia_visual_editor.services.llm.exceptions import (
@@ -68,6 +69,7 @@ def _serialize(row: ChatSession) -> dict[str, Any]:
 @router.post(
     "/api/projects/{project_id}/chat",
     status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
 )
 async def create_chat_session(
     project_id: uuid.UUID,
@@ -143,7 +145,10 @@ async def _append_turn(
         await s.commit()
 
 
-@router.post("/api/chat/{session_id}/stream")
+@router.post(
+    "/api/chat/{session_id}/stream",
+    dependencies=[Depends(get_current_user)],
+)
 async def stream_chat_reply(
     session_id: uuid.UUID,
     body: ChatStreamRequest,

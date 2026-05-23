@@ -48,6 +48,7 @@ from indusia_visual_editor.db.models import (
     PreLabel,
 )
 from indusia_visual_editor.db.session import get_session
+from indusia_visual_editor.services.auth.dependencies import get_current_user
 from indusia_visual_editor.services.inspect_scope.derive import (
     DEFECT_CRITERIA,
     LSAnnotation,
@@ -262,7 +263,11 @@ def _serialize_label(row: Label) -> dict[str, Any]:
     }
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_user)],
+)
 async def submit_labels(
     project_id: uuid.UUID,
     side: str = Query(...),

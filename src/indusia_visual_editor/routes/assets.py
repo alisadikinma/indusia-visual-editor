@@ -23,6 +23,7 @@ from indusia_visual_editor.services.asset.image_store import (
     list_assets,
     save_asset,
 )
+from indusia_visual_editor.services.auth.dependencies import get_current_user
 from indusia_visual_editor.services.project.crud import get_project
 from indusia_visual_editor.utils.responses import success
 
@@ -34,7 +35,7 @@ def _serialize(asset) -> dict:
     return AssetRead.model_validate(asset).model_dump(mode="json")
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(get_current_user)])
 async def upload_asset(
     project_id: uuid.UUID,
     kind: AssetKind = Query(...),
