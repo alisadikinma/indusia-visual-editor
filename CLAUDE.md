@@ -12,7 +12,7 @@
 | One-line | Factory-user-driven PCB inspection platform — BOM + golden sample → production inspection in hours, no YAML, no CLI |
 | Primary user | MI division operator / supervisor at PCB factories (non-coder) |
 | Repo root | `D:\Projects\indusia-visual-editor` |
-| Status | M0 ✓ · M1 ✓ · M2 ✓ · M3 ✓ · M4 ✓ (4.1 detector→node mapping, 4.2 subgraph builder, 4.3 top-config + defaults, 4.4 atomic writer, 4.5 orchestrator, 4.6 `/api/projects/{id}/adapt` route + `adapt_runs` table); next: M5 pre-label assistant (needs gaspol-plan sub-phase breakdown) |
+| Status | M0 ✓ · M1 ✓ · M2 ✓ · M3 ✓ · M4 ✓ · M5 ✓ (5.1 prelabel orchestrator, 5.2 `pre_labels` table, 5.3 `/api/projects/{id}/llm/prelabel` route, 5.4 wizard step 2 PreLabelPanel) · M6 ✓ (6.1 LSF vendored at `web/public/lsf/`, 6.2 `labels` table, 6.3 GET task + POST submit routes, 6.4 `LSFEmbed.vue` React-island wrapper, 6.5 `LabelingView.vue` + `/projects/:id/labeling` route + wizard step 3 link, 6.6 `bom_items.scope_mode` + `detector_presets` columns + writes); next: M7 training integration (auto-inspect-service `/api/training/start` + SSE relay) |
 | Plan (M0–M4) | [docs/plans/2026-05-22-visual-editor-mvp.md](docs/plans/2026-05-22-visual-editor-mvp.md) |
 | Plan (M5–M14) | [docs/plans/2026-05-22-visual-editor-mvp-m5-m14.md](docs/plans/2026-05-22-visual-editor-mvp-m5-m14.md) |
 | Adoption spec | [docs/specs/label-studio-adoption.md](docs/specs/label-studio-adoption.md) |
@@ -21,17 +21,17 @@
 
 ## 2. Current implementation state
 
-Only commit history is authoritative — never invent state. As of 2026-05-22:
+Only commit history is authoritative — never invent state. As of 2026-05-23 (M6 close):
 
 | Layer | Built | Not yet built |
 |---|---|---|
-| Backend | FastAPI app, `GET /health`, `/api/projects` CRUD, `/api/projects/{id}/assets` upload + list + binary, `/api/projects/{id}/bom_items` GET list, `/api/projects/{id}/llm/plan` POST (create) + GET (latest) — calls Ollama, persists versioned `ProposedPipelineRow`, DB models (Project/Asset/BomItem/ProposedPipelineRow), `get_session` async dep, exception handlers for 404/409/413/422/502 + generic HTTPException all return `{status, message, data}` shape, fs storage at `IVE_STORAGE_ROOT` with SHA256 dedup, **Ollama async client** (`services/llm/client.py`) — wraps httpx, typed errors (LlmConnection/Timeout/Response/Validation), structured-output via `format=`, base64 image passthrough, **planner** (`services/llm/planner.py`) — system prompt at `prompts/planner.md`, validates output against `ProposedPipeline` pydantic, **BOM parser** (`services/asset/bom_parser.parse_bom`) — xlsx + csv, fuzzy column matching, multi-designator expansion, header autodetect, BomParseError with Bahasa Indonesia messages, **MI/SMT heuristic classifier** (`services/asset/mi_classifier.classify`) — taxonomy at `data/component_taxonomy.yaml`, sets `mi_likely` + `component_type` on each parsed row, persists to `bom_items`, **inspect_scope deriver** (`services/inspect_scope/derive.derive_inspect_scope`) — groups LSF annotation result[] by region id, maps defect criteria → detector presets via `data/defect_detector_mapping.yaml`, `UnknownDefectCriterion` on typo, `solder_short` whole-side-only enforced | LLM client (M3), labels (M6) |
-| Tests | 149 backend pass: health, db_connection, 3× db_models, 7× projects CRUD, 7× assets, 7× bom_parser, 6× bom_upload, 26× mi_classifier, 7× derive_inspect_scope, 3× bom_list, 10× ollama_client, 13× llm_schemas, 5× planner, 7× llm route, 13× node_map (Phase 4.1 detector→graphflow node specs + registry meta), 10× subgraph (Phase 4.2 per-component builder + edge invariants), 9× top_config (Phase 4.3 fiducial strategies + defaults), 4× writer (Phase 4.4 atomic roundtrip + backup-on-overwrite + rollback-on-fail), 3× compose (Phase 4.5 orchestrator + NoPlan/NoInspected errors), 5× adapt route (Phase 4.6 POST + 422 no-plan + 422 all-skipped + GET history + 404 missing-project), 2× graphflow spike. 2 opt-in integration tests (Ollama) skip when `IVE_OLLAMA_INTEGRATION` unset. | everything else |
-| Frontend | Vue 3 + Vite 5 + TS at `web/`. Routes: `/` Dashboard (live API list + create dialog → POST → router push to wizard), `/projects/:id/wizard` real impl: step indicator (1/3 BOM Upload), drag-drop zone (.xlsx/.csv/.xlsm), BomTable with MI/SMT badge + footer (total · MI-likely · SMT). Pinia `useProjectsStore` + `useWizardStore` (fetchBomItems, upload). Axios clients: `api/projects.ts`, `api/bom.ts`. `StatusBadge` 4 variants per `docs/design/dashboard-tokens.md`. CORS allowed on backend for :5173. 9 Vitest tests pass (App + Dashboard + 5× BomTable). | LSF embed (M6) |
+| Backend | FastAPI app, `GET /health`, `/api/projects` CRUD, `/api/projects/{id}/assets` upload + list + binary, `/api/projects/{id}/bom_items` GET list, `/api/projects/{id}/llm/plan` POST + GET, `/api/projects/{id}/llm/prelabel` POST + GET (latest-wins per side), `/api/projects/{id}/adapt` POST + GET history, **`/api/projects/{id}/labels/task?side=` GET — composes LSF task JSON with predictions baked from latest pre_labels + XML config from BOM designators**, **`/api/projects/{id}/labels?side=` POST — validates LS-JSON via `LSAnnotation`, runs `derive_inspect_scope`, propagates inspect_scope + scope_mode + detector_presets onto bom_items, persists versioned `Label` row**, **`/api/projects/{id}/labels` GET — history**, DB models (Project / Asset / BomItem / ProposedPipelineRow / AdaptRun / PreLabel / Label), `get_session` async dep, exception handlers for 404/409/413/422/502 + generic HTTPException all return `{status, message, data}` shape, fs storage at `IVE_STORAGE_ROOT` with SHA256 dedup, **Ollama async client** (`services/llm/client.py`) — typed errors, structured-output via `format=`, base64 image passthrough, **planner** (`services/llm/planner.py`) — validates against `ProposedPipeline` pydantic, **prelabel orchestrator** (`services/llm/prelabel.py`) — golden + drawing prior, validates against `list[PreLabeledRegion]`, **BOM parser** (xlsx + csv, fuzzy header matching, BomParseError in Bahasa Indonesia), **MI/SMT heuristic classifier** (`data/component_taxonomy.yaml`), **inspect_scope deriver** (groups LS-JSON by region id, maps criteria via `data/defect_detector_mapping.yaml`, `UnknownDefectCriterion` on typo, `solder_short` whole-side-only enforced), **graphflow adapter** (`services/adapter/compose.py` — orchestrator, subgraph builder, top-config with fiducial defaults, atomic writer with backup-on-overwrite + rollback-on-fail) | M7 training client (httpx + SSE relay to auto-inspect-service), M8 Gate 1 UI, M9 eval, M10 promote + ais subprocess, M11 edge webhooks, M12 chat advisor, M13 auth, M14 Traefik / structured logging / OTel |
+| Tests | 194 backend pass + 22 frontend pass = 216 total. Backend breakdown: health, db_connection, 8× db_models (incl. 3× Label), 7× projects CRUD, 7× assets, 7× bom_parser, 6× bom_upload, 26× mi_classifier, 7× derive_inspect_scope, 3× bom_list, 10× ollama_client, 13× llm_schemas, 5× planner, 7× llm route, 13× node_map, 10× subgraph, 9× top_config, 4× writer, 3× compose, 5× adapt route, 2× graphflow spike, 5× prelabel orchestrator, 7× prelabel route, **12× labels route (5× GET task + 6× POST submit + 1× detector_presets persistence)**, **12× LSF artifact spike (vendoring guards)**. 3 opt-in integration tests skip when `IVE_OLLAMA_INTEGRATION` unset. Frontend breakdown: 1× App + 1× Dashboard + 5× BomTable + 4× PreLabelPanel + 5× LSFEmbed (window.LabelStudio mock — reactVersion v18, submit emit, update emit, destroy on unmount, load-error timeout) + 4× LabelingView (fetch on mount, side toggle refetch, submit emit forwarding with version display, 422 error envelope). | everything else |
+| Frontend | Vue 3 + Vite 5 + TS at `web/`. Routes: `/` Dashboard, `/projects/:id/wizard` (step 1 BOM upload + step 2 PreLabelPanel per side + step 3 router-link to labeling), **`/projects/:id/labeling` (LabelingView with Atas/Bawah side toggle, embedded LSFEmbed React-island wrapper, save indicator showing version, error envelope)**. Pinia stores: `useProjectsStore`, `useWizardStore` (fetchBomItems, upload, runPreLabel, fetchPreLabel), **`useLabelsStore` (fetchTask, submit, side state, latest version)**. Axios clients: `api/projects.ts`, `api/bom.ts`, `api/prelabel.ts`, **`api/labels.ts` (getTask rewrites relative image URL to absolute via VITE_API_URL so LSF can fetch directly, submitLabels)**. Components: `StatusBadge`, `BomTable`, `PreLabelPanel`, **`LSFEmbed.vue`** (Vue 3 wrapper polling `window.LabelStudio` up to 5s, mounts with `reactVersion: 'v18'`, watches config/task and re-mounts on change, destroys on unmount). CORS allowed on backend for :5173. | LSF runtime smoke verification (manual), skipped-region dim overlay runtime binding (CSS rule in place, watcher TBD) |
 | Docker | `docker-compose.dev.yml` (postgres:16-alpine on host port 5433, named volume `ive-postgres-data`), dev `Dockerfile.api` + `web/Dockerfile`, `scripts/dev-{up,down}.ps1` helpers | Production Dockerfiles + Traefik (M14) |
-| DB | Alembic baseline 0001 applied: `projects`, `assets`, `bom_items` tables live with UUID PKs, TIMESTAMPTZ, JSONB extra, CHECK-constraint enums. Downgrade→upgrade cycle clean. | Future migrations per phase |
-| LSF | upstream build verified, NOT yet vendored | vendor in M6 Phase 6.1 |
-| Graphflow schema | spec documented (2-layer, 49 node types) | adapter implementation in M4 |
+| DB | Alembic migrations 0001–0006 applied: `projects`, `assets`, `bom_items` (with `scope_mode` + `detector_presets` cols from 0006), `proposed_pipelines`, `adapt_runs`, `pre_labels`, **`labels`** tables live with UUID PKs, TIMESTAMPTZ, JSONB, CHECK-constraint enums. All downgrade→upgrade cycles clean. | Future migrations per phase |
+| LSF | **Vendored at `web/public/lsf/` (~7.5MB: main.js, main.css, 5 chunks, 2 fonts, WASM, XML config) via `scripts/vendor-lsf.ps1` (idempotent + sha256 manifest). `.gitattributes` pins as `-text` for cross-platform byte stability. `web/index.html` references `/lsf/main.js` + `/lsf/main.css`. Embedded via `LSFEmbed.vue` with `reactVersion: 'v18'`.** | Production deploy (M14) confirms vendored bundle paths under nginx |
+| Graphflow schema | spec documented (2-layer, 49 node types) + adapter shipped in M4 | Runtime smoke against real auto-inspect-service (M7) |
 
 **Anti-hallucination rule:** if it isn't in the file tree or the git log, it doesn't exist. Run `git log --oneline` if uncertain.
 
@@ -197,9 +197,9 @@ Map these to HTTP responses via FastAPI exception handlers in `main.py`. Mirror 
 - DB tests use a separate test DB + transactional rollback fixture (set up in Phase 1.1)
 - Fixtures for BOMs / images go in `tests/fixtures/`
 
-## 7. Database schema — Phase 1.1 baseline LIVE
+## 7. Database schema — migrations 0001–0006 LIVE
 
-Migration `alembic/versions/0001_initial_schema.py` defines `projects`, `assets`, `bom_items`. Tables below remain DESIGN until their respective phases ship migrations.
+Live migrations: `0001_initial_schema` (`projects`, `assets`, `bom_items`), `0002_proposed_pipelines`, `0003_adapt_runs`, `0004_pre_labels`, `0005_labels`, `0006_bom_items_detector_presets` (adds `scope_mode` + `detector_presets` columns to `bom_items`). Tables flagged "DESIGN" below await their respective phases.
 
 ```sql
 -- Phase 1.1
@@ -236,6 +236,9 @@ bom_items (
   mi_likely BOOL,
   component_type TEXT,     -- 'electrolytic_cap','dip_ic','connector','tht_resistor','smd_generic',...
   defect_history_count INT DEFAULT 0,
+  -- M6 Phase 6.6 columns (migration 0006)
+  scope_mode TEXT CHECK (scope_mode IN ('per_component','whole_side')) DEFAULT 'per_component',
+  detector_presets JSONB,  -- list[str] of names from data/defect_detector_mapping.yaml
   extra JSONB              -- preserved BOM columns we don't model
 )
 
@@ -245,12 +248,14 @@ proposed_pipelines (
   approved_by UUID, approved_at TIMESTAMPTZ
 )
 
--- M6
+-- M6 LIVE (migration 0005)
 labels (
-  id UUID PK, project_id UUID FK, version INT,
+  id UUID PK, project_id UUID FK ON DELETE CASCADE,
   side TEXT CHECK (side IN ('top','bottom')),
+  version INT,
   ls_json JSONB,           -- exact LS-JSON shape from LSF onSubmit
-  snapshot_at TIMESTAMPTZ
+  snapshot_at TIMESTAMPTZ DEFAULT now(),
+  UNIQUE(project_id, side, version)
 )
 
 -- M7
@@ -450,8 +455,8 @@ Invoke-WebRequest http://127.0.0.1:8002/health -UseBasicParsing
 
 ## 16. What NOT to do — top anti-hallucination guardrails
 
-1. **Do not invent hooks, components, or routes.** Check the actual file tree first. As of 2026-05-22 only `/health` exists.
-2. **Phase 1.1 ✓**: `projects`, `assets`, `bom_items` exist via Alembic migration `0001_initial`. Other tables in §7 are still design-only — check `alembic/versions/` before assuming a table exists.
+1. **Do not invent hooks, components, or routes.** Check the actual file tree first. As of 2026-05-23 (M6 close) the live routes are: `/health`, `/api/projects` CRUD, `/api/projects/{id}/assets` (POST + GET list + binary), `/api/projects/{id}/bom_items` GET, `/api/projects/{id}/llm/plan` POST + GET, `/api/projects/{id}/llm/prelabel` POST + GET, `/api/projects/{id}/adapt` POST + GET, `/api/projects/{id}/labels/task` GET, `/api/projects/{id}/labels` POST + GET.
+2. **Tables live as of M6 close**: `projects`, `assets`, `bom_items` (with `scope_mode` + `detector_presets` from migration 0006), `proposed_pipelines`, `adapt_runs`, `pre_labels`, `labels` — via migrations 0001–0006. `train_runs`, `deployments`, `edges`, `chat_sessions`, `users`, `organizations` remain design-only — check `alembic/versions/` before assuming a table exists.
 3. **Do not modify `D:\Projects\Indusia-Inspection\` or `D:\Projects\label-studio\`** from this project. They are sibling repos with their own lifecycle.
 4. **Do not fork LSF.** We vendor the built artifact; no source-level changes.
 5. **Do not substitute mock data for real integrations.** If a hook / service / table doesn't exist, raise it as a blocker and ask. See gaspol-execute Iron Laws.
