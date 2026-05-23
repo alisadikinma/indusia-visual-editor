@@ -32,6 +32,8 @@ from sse_starlette.sse import EventSourceResponse
 from indusia_visual_editor.config import get_config
 from indusia_visual_editor.db.models import AdaptRun, TrainRun
 from indusia_visual_editor.db.session import get_session, get_sessionmaker
+from indusia_visual_editor.routes import llm as _llm_route_module
+from indusia_visual_editor.routes.dataset_stats import compute_dataset_stats
 from indusia_visual_editor.schemas.training import TrainRunRead
 from indusia_visual_editor.services.inspect_service.exceptions import (
     InspectServiceConnectionError,
@@ -42,6 +44,13 @@ from indusia_visual_editor.services.inspect_service.exceptions import (
 from indusia_visual_editor.services.inspect_service.training_client import (
     TrainingClient,
 )
+from indusia_visual_editor.services.llm.exceptions import (
+    LlmConnectionError,
+    LlmResponseError,
+    LlmTimeoutError,
+    LlmValidationError,
+)
+from indusia_visual_editor.services.llm.hyperparams import suggest_hyperparams
 from indusia_visual_editor.services.project.crud import get_project
 from indusia_visual_editor.utils.responses import success
 
@@ -136,6 +145,67 @@ async def start_training(
         data=_serialize(row),
         message="training started",
         status_code=status.HTTP_201_CREATED,
+    )
+
+
+@router.post("/suggest-hyperparams")
+async def suggest_training_hyperparams(
+    project_id: uuid.UUID,
+    side: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Compose dataset stats + a Gemma 4 hyperparam suggestion in one call.
+
+    Used by the Gate-1 panel (M8.3) to render both the stats grid AND the
+    suggested epochs/batch_size/aug-intensity without forcing the frontend
+    to round-trip twice. The LLM client factory used here is the same
+    `routes.llm._llm_client_factory` test seam already shipped in M3 —
+    tests override it via `set_llm_client_factory`.
+    """
+    if side not in ("top", "bottom"):
+        raise HTTPException(
+            status_code=422, detail=f"side must be 'top' or 'bottom', got {side!r}"
+        )
+
+    await get_project(session, project_id)
+
+    stats = await compute_dataset_stats(session, project_id, side)
+    if stats is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"no label yet for side={side}; finish the canvas pass first",
+        )
+
+    cfg = get_config()
+    client = _llm_route_module._llm_client_factory(
+        base_url=cfg.ollama_url, timeout=cfg.ollama_timeout
+    )
+    try:
+        try:
+            hp = await suggest_hyperparams(
+                client=client,
+                model=cfg.ollama_model_planner,
+                dataset_stats=stats,
+            )
+        except (LlmConnectionError, LlmTimeoutError, LlmResponseError) as exc:
+            raise HTTPException(
+                status_code=502, detail=f"Ollama unavailable: {exc}"
+            )
+        except LlmValidationError as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Ollama returned invalid hyperparameters: {exc}",
+            )
+    finally:
+        await client.aclose()
+
+    return success(
+        data={
+            "project_id": str(project_id),
+            "side": side,
+            "stats": stats,
+            "hyperparameters": hp.model_dump(),
+        }
     )
 
 
