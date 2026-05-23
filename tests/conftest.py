@@ -30,19 +30,22 @@ _AUTH_TEST_MODULES = {
     "tests.routes.test_auth_middleware",
     "tests.services.auth.test_jwt",
     "tests.services.auth.test_passwords",
+    "tests.services.auth.test_rbac",
 }
 
 
 def _synthetic_user() -> User:
     """Fake operator that the dependency override returns. Detached from
     the session — tests that need a real DB-resident user should call the
-    signup endpoint instead."""
+    signup endpoint instead. Role is admin so legacy tests can exercise
+    every gated mutation; role-specific behaviour is verified explicitly
+    in tests/services/auth/test_rbac.py with per-test overrides."""
     return User(
         id=uuid.UUID("00000000-0000-0000-0000-00000000aaaa"),
         organization_id=SEED_ORG_ID,
         email="test-user@indusiatest.dev",
         password_hash="not-a-real-hash",
-        role=UserRole.ENGINEER,
+        role=UserRole.ADMIN,
     )
 
 

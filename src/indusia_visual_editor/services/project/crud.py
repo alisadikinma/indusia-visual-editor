@@ -26,8 +26,16 @@ class ProjectNotFoundError(Exception):
     """Raised when a project_id has no matching row."""
 
 
-async def create_project(session: AsyncSession, payload: ProjectCreate) -> Project:
-    project = Project(name=payload.name, slug=payload.slug)
+async def create_project(
+    session: AsyncSession,
+    payload: ProjectCreate,
+    organization_id: uuid.UUID | None = None,
+) -> Project:
+    project = Project(
+        name=payload.name,
+        slug=payload.slug,
+        organization_id=organization_id,
+    )
     session.add(project)
     try:
         await session.flush()
@@ -38,8 +46,18 @@ async def create_project(session: AsyncSession, payload: ProjectCreate) -> Proje
     return project
 
 
-async def list_projects(session: AsyncSession) -> Sequence[Project]:
-    result = await session.execute(select(Project).order_by(Project.created_at.desc()))
+async def list_projects(
+    session: AsyncSession,
+    organization_id: uuid.UUID | None = None,
+) -> Sequence[Project]:
+    """List projects. When `organization_id` is supplied, the result is
+    scoped to that organization. Passing None returns every project
+    (used by background jobs and admin tooling that intentionally cross
+    tenants — never by an unauthenticated request)."""
+    stmt = select(Project).order_by(Project.created_at.desc())
+    if organization_id is not None:
+        stmt = stmt.where(Project.organization_id == organization_id)
+    result = await session.execute(stmt)
     return result.scalars().all()
 
 

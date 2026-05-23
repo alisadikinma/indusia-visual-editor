@@ -68,6 +68,25 @@ async def get_current_user(
     return user
 
 
+async def get_current_user_optional(
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+    config: AppConfig = Depends(get_config),
+) -> User | None:
+    """Same as `get_current_user` but returns None instead of raising 401
+    when the request is unauthenticated. Use on public-but-scopable GETs
+    (e.g. listing projects): logged-in callers get an org-scoped view, the
+    unauthenticated dashboard still loads with the legacy unscoped view."""
+    if authorization is None:
+        return None
+    try:
+        return await get_current_user(
+            authorization=authorization, session=session, config=config
+        )
+    except HTTPException:
+        return None
+
+
 def require_role(*allowed: str):
     """Factory: returns a FastAPI dependency that enforces `allowed` roles."""
 
