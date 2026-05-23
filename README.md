@@ -125,23 +125,25 @@ indusia-visual-editor/
 Prerequisites: Node 24 (via nvm-windows), Python 3.10+, Poetry 2.x, Docker Desktop, an Ollama instance running `gemma4:31b`.
 
 ```powershell
+# Database (host port 5433 → container 5432)
+docker compose -f docker-compose.dev.yml up -d postgres
+$env:IVE_DATABASE_URL="postgresql+asyncpg://ive:ive@localhost:5433/ive"
+poetry run alembic upgrade head
+
 # Backend
 poetry install
 poetry run uvicorn indusia_visual_editor.main:app --reload --host 0.0.0.0 --port 8002
 # → http://localhost:8002/health
 
-# Frontend (after Phase 0.3 lands)
+# Frontend
 cd web
 pnpm install
 pnpm dev
 # → http://localhost:5173
 
-# Database + Ollama + sibling inspection stack (after Phase 0.4 lands)
-docker compose -f docker-compose.dev.yml up -d postgres ollama
-
 # Run all tests
-poetry run pytest -v          # backend
-cd web && pnpm test           # frontend
+poetry run pytest -v          # backend (278 pass)
+cd web && pnpm test           # frontend (36 pass)
 ```
 
 The LSF bundle is built once from the upstream `D:\Projects\label-studio` repo and vendored into `web/public/lsf/` — see [`docs/specs/lsf-build.md`](docs/specs/lsf-build.md) for the verified build procedure.
@@ -162,28 +164,28 @@ The LSF bundle is built once from the upstream `D:\Projects\label-studio` repo a
 
 ## Status
 
-**Active development — M0 through M4 shipped (149 backend + 9 frontend tests pass).** Following the milestone roadmap in [`docs/plans/2026-05-22-visual-editor-mvp.md`](docs/plans/2026-05-22-visual-editor-mvp.md):
+**Active development — M0 through M11 shipped (278 backend + 36 frontend tests pass = 314 total).** Following the milestone roadmap in [`docs/plans/2026-05-22-visual-editor-mvp.md`](docs/plans/2026-05-22-visual-editor-mvp.md) (M0–M4) and [`docs/plans/2026-05-22-visual-editor-mvp-m5-m14.md`](docs/plans/2026-05-22-visual-editor-mvp-m5-m14.md) (M5–M14):
 
 | Milestone | Status | What landed |
 |---|---|---|
-| Design + plan + adoption specs | ✅ Done | M0–M14 roadmap, LSF adoption spec, graphflow schema spec, dashboard tokens |
+| Design + plan + adoption specs | ✅ Done | M0–M14 roadmap, LSF adoption spec, graphflow schema spec, dashboard tokens, ais-model-push spec |
 | M0 — Bootstrap | ✅ Done | LSF build spike, FastAPI scaffold + `/health`, graphflow config.yaml spike, Vue 3 + Vite + Pinia + Tailwind frontend scaffold, Docker Compose dev env (postgres:16 on host port 5433) |
 | M1 — Project + Asset CRUD + Dashboard | ✅ Done | Alembic baseline (projects/assets/bom_items), `/api/projects` CRUD, `/api/projects/{id}/assets` upload + list + binary (SHA256 dedup, 50MB cap, path-traversal-safe), Dashboard view with real API + create dialog + status badges |
-| M2 — BOM parser + classifier + preview | ✅ Done | xlsx/csv parser with multi-designator expansion + Bahasa Indonesia errors, REPLACE persistence strategy, MI/SMT heuristic classifier (`component_taxonomy.yaml`), `derive_inspect_scope` (LSF annotation → BomItemUpdate with detector presets), `defect_detector_mapping.yaml` (9 canonical criteria), ProjectWizard step 1 with drag-drop + BomTable |
-| M3 — LLM client foundation | ✅ Done | Ollama async httpx client (typed `LlmError` subclasses, structured-output via `format=`, base64 image passthrough), pydantic schemas for all four Gemma roles (planner / prelabel / judge / advisor) with `extra="forbid"` + field validators, planner skeleton with system prompt at `prompts/planner.md`, `POST/GET /api/projects/{id}/llm/plan` route + `proposed_pipelines` versioned table |
-| M4 — Planner adapter → graphflow writer | ✅ Done | `data/detector_to_nodes.yaml` mapping 13 presets to 51-name registry, `node_map.py`, per-component `subgraph.py` builder, `top_config.py` + bundled `default_locations.yaml` + `default_settings.yaml`, atomic `writer.py` (tempdir + backup-on-overwrite + rollback-on-fail), `compose.py` orchestrator, `POST/GET /api/projects/{id}/adapt` route + `adapt_runs` table. Writes to `IVE_MODELS_ROOT` shared filesystem path (locked ADR). |
-| M5 — Pre-label assistant | ⏳ Roadmap | Needs `gaspol-plan` sub-phase breakdown |
-| M6 — Labeling canvas (LSF embed) | ⏳ Roadmap | LSF build verified upstream; vendoring still pending |
-| M7 — Training integration + SSE | ⏳ Roadmap | |
-| M8 — Gate 1 (training approval) | ⏳ Roadmap | |
-| M9 — Eval metrics view | ⏳ Roadmap | |
-| M10 — Gate 2 + promote-to-production | ⏳ Roadmap | |
-| M11 — Edge notification + version pin | ⏳ Roadmap | |
-| M12 — Chat advisor | ⏳ Roadmap | |
-| M13 — Auth + multi-user | ⏳ Roadmap | |
-| M14 — Polish + production deploy | ⏳ Roadmap | |
+| M2 — BOM parser + classifier + preview | ✅ Done | xlsx/csv parser with multi-designator expansion + Bahasa Indonesia errors, REPLACE persistence, MI/SMT heuristic classifier (`component_taxonomy.yaml`), `derive_inspect_scope` (LSF annotation → BomItemUpdate with detector presets), `defect_detector_mapping.yaml` (9 canonical criteria), ProjectWizard step 1 with drag-drop + BomTable |
+| M3 — LLM client foundation | ✅ Done | Ollama async httpx client (typed `LlmError` subclasses, structured-output via `format=`, base64 image passthrough), pydantic schemas for all four Gemma roles with `extra="forbid"` + field validators, planner skeleton with system prompt at `prompts/planner.md`, `POST/GET /api/projects/{id}/llm/plan` route + `proposed_pipelines` versioned table |
+| M4 — Planner adapter → graphflow writer | ✅ Done | `data/detector_to_nodes.yaml` mapping 13 presets to 51-name registry, `node_map.py`, per-component `subgraph.py` builder, `top_config.py` + bundled `default_locations.yaml` + `default_settings.yaml`, atomic `writer.py` (tempdir + backup-on-overwrite + rollback-on-fail), `compose.py` orchestrator, `POST/GET /api/projects/{id}/adapt` route + `adapt_runs` table |
+| M5 — Pre-label assistant | ✅ Done | `services/llm/prelabel.py` orchestrator with golden+drawing dual-image prior, `prompts/prelabel.md` system prompt, `pre_labels` table (latest-wins per side via UNIQUE constraint), `POST/GET /api/projects/{id}/llm/prelabel?side=` route + Wizard step 2 PreLabelPanel with per-side run + region count UI |
+| M6 — Labeling canvas (LSF embed) | ✅ Done | LSF bundle vendored at `web/public/lsf/` via `scripts/vendor-lsf.ps1` (~7.5MB, sha256 manifest), `labels` table (versioned per side), `GET /api/projects/{id}/labels/task?side=` returning composed LSF task + predictions, `POST /api/projects/{id}/labels` that pipes through `derive_inspect_scope` and persists `detector_presets` onto bom_items, `LSFEmbed.vue` React-island wrapper with `reactVersion:'v18'`, `LabelingView.vue` at `/projects/:id/labeling` |
+| M7 — Training integration + SSE | ✅ Done | `services/inspect_service/training_client.TrainingClient` (typed `InspectServiceError` subclasses, mock-transport tested), `train_runs` table, `POST /api/projects/{id}/training/start` + history GET, `GET /api/training/{run_id}/stream` SSE relay that updates `TrainRun.status` + `metrics_json` on terminal events |
+| M8 — Gate 1 (training approval) | ✅ Done | `GET /api/projects/{id}/dataset/stats?side=` (latest Label via `derive_inspect_scope` + MI/SMT join), `services/llm/hyperparams.suggest_hyperparams` (pydantic-bounded `Hyperparameters{epochs ∈ [5,200], batch_size ∈ [4,64], augmentation_intensity ∈ low/medium/high, notes}`), `POST /training/suggest-hyperparams` composer route, `Gate1View.vue` at `/projects/:id/gate1`, `TrainingProgressView.vue` SSE consumer |
+| M9 — Eval metrics view | ✅ Done | `TrainingClient.get_predictions(job_id)` + `GET /api/training/{run_id}/eval` (assembles metrics + live predictions + prev-run delta per-project), `EvalView.vue` at `/projects/:id/eval/:runId` with mAP card + delta arrow + `MetricChart.vue` (plain-SVG per-component F1, threshold-coded colors, prev-run outline) + `PredictionGrid.vue` (top-10 worst FP/FN) |
+| M10 — Gate 2 + promote-to-production | ✅ Done | `docs/specs/ais-model-push.md` (plan-correction: real CLI is `ais model add → commit → push`, no `--version` flag), `deployments` table, `services/deploy/registry.push_model` async wrapper with `PushResult{stage}` short-circuit + `asyncio.wait_for` timeout, `POST/GET /api/projects/{id}/deploy` (audit row persists BEFORE 502 envelope), `Gate2View.vue` at `/projects/:id/eval/:runId/gate2` with mandatory confirmation modal, three new env vars (`IVE_AIS_BINARY`, `IVE_REGISTRY_ROOT`, `IVE_AIS_PUSH_TIMEOUT_SECS`) |
+| M11 — Edge notification + version pin | ✅ Done | `edges` table (UNIQUE name + JSONB version_policy), `POST/GET /api/edges` + `PUT /api/edges/{id}` (policy) + `PUT /api/edges/{id}/pin` (manual rollback / unpin via empty body), `services/edge/notify.notify_edges` async fan-out with 1/2/4s exponential backoff (3 attempts), per-edge `NotifyOutcome` so a single flaky edge doesn't roll back the deployment, pinned edges receive their pinned target not the deployment version. Wired into deploy success path — outcomes persist to `deployments.edges_notified` JSONB, SKIPPED on push failure |
+| M12 — Chat advisor | ⏳ Roadmap | Slide-out drawer, Gemma streaming SSE, last-20-turn context + ROI crops |
+| M13 — Auth + multi-user | ⏳ Roadmap | JWT email/password, org isolation, simple roles |
+| M14 — Polish + production deploy | ⏳ Roadmap | Traefik reverse proxy, Docker Compose prod stack, structured logging |
 
-Refer to [CLAUDE.md](CLAUDE.md) for the authoritative current-state inventory (routes built, hooks available, tables existing) — that file is updated every phase, this README describes the eventual product.
+Refer to [CLAUDE.md](CLAUDE.md) for the authoritative current-state inventory (routes built, tables existing, conventions, anti-hallucination rules) — that file is updated every phase, this README describes the eventual product.
 
 ## Documentation map
 
