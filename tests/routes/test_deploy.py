@@ -19,10 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from indusia_visual_editor.db.models import AdaptRun, Deployment, TrainRun
 from indusia_visual_editor.main import app
 from indusia_visual_editor.routes.deploy import (
+    reset_notify_edges_callable,
     reset_push_model_callable,
+    set_notify_edges_callable,
     set_push_model_callable,
 )
 from indusia_visual_editor.services.deploy.registry import PushResult
+from indusia_visual_editor.services.edge.notify import NotifyOutcome
 
 
 pytestmark = pytest.mark.skipif(
@@ -87,6 +90,27 @@ async def query_session():
 def reset_push():
     yield
     reset_push_model_callable()
+
+
+class _NotifyRecorder:
+    """Captures notify_edges invocations + returns scripted outcomes."""
+
+    def __init__(self, outcomes: list[NotifyOutcome] | None = None) -> None:
+        self.outcomes = outcomes or []
+        self.calls: list[dict] = []
+
+    async def __call__(self, **kwargs) -> list[NotifyOutcome]:
+        self.calls.append(kwargs)
+        return self.outcomes
+
+
+@pytest.fixture(autouse=True)
+def stub_notify():
+    """Default: notify returns [] so M10 tests stay green without edge seeds.
+    Tests that care about the edges_notified path override this in-body."""
+    set_notify_edges_callable(_NotifyRecorder([]))
+    yield
+    reset_notify_edges_callable()
 
 
 async def _create_project(client: AsyncClient, suffix: str) -> tuple[uuid.UUID, str]:
@@ -297,3 +321,89 @@ async def test_get_deploy_history_lists_deployments_for_project(
     rows = r.json()["data"]
     assert isinstance(rows, list)
     assert len(rows) == 2
+
+
+# ---------------- Phase 11.2 — notify integration ----------------
+
+
+@pytest.mark.asyncio
+async def test_post_deploy_persists_edges_notified_jsonb_on_success(
+    client: AsyncClient, query_session: AsyncSession
+):
+    """After a successful push, the deploy route fans out notify_edges
+    and persists the per-edge outcomes into the Deployment row's
+    edges_notified JSONB column."""
+    pid, _ = await _create_project(client, "notify")
+    await _seed_succeeded_train_run(query_session, pid)
+
+    set_push_model_callable(_PushRecorder(_PUSH_OK))
+    notify = _NotifyRecorder(
+        [
+            NotifyOutcome(
+                edge_id="edge-a",
+                name="line-a",
+                ok=True,
+                attempts=1,
+                error=None,
+            ),
+            NotifyOutcome(
+                edge_id="edge-b",
+                name="line-b",
+                ok=False,
+                attempts=3,
+                error="HTTP 500: down",
+            ),
+        ]
+    )
+    set_notify_edges_callable(notify)
+
+    r = await client.post(f"/api/projects/{pid}/deploy")
+    assert r.status_code == 201, r.text
+    data = r.json()["data"]
+    assert data["edges_notified"] is not None
+    assert set(data["edges_notified"].keys()) == {"line-a", "line-b"}
+    assert data["edges_notified"]["line-a"]["ok"] is True
+    assert data["edges_notified"]["line-b"]["ok"] is False
+    assert data["edges_notified"]["line-b"]["attempts"] == 3
+
+    # Notify call shape — passes deployment row + project slug.
+    assert len(notify.calls) == 1
+    kwargs = notify.calls[0]
+    assert "deployment" in kwargs
+    assert "pcb_name" in kwargs
+
+    # DB row also reflects edges_notified.
+    row = (
+        await query_session.execute(
+            select(Deployment).where(Deployment.project_id == pid)
+        )
+    ).scalar_one()
+    assert row.edges_notified is not None
+    assert row.edges_notified["line-a"]["ok"] is True
+
+
+@pytest.mark.asyncio
+async def test_post_deploy_skips_notify_on_push_failure(
+    client: AsyncClient, query_session: AsyncSession
+):
+    """If push fails, we do NOT notify edges — they'd consume an
+    incomplete deployment. CLAUDE.md §11 — edges only consume successful
+    promotions."""
+    pid, _ = await _create_project(client, "notify-skip")
+    await _seed_succeeded_train_run(query_session, pid)
+
+    set_push_model_callable(_PushRecorder(_PUSH_FAIL))
+    notify = _NotifyRecorder([])
+    set_notify_edges_callable(notify)
+
+    r = await client.post(f"/api/projects/{pid}/deploy")
+    assert r.status_code == 502
+    assert len(notify.calls) == 0
+
+    row = (
+        await query_session.execute(
+            select(Deployment).where(Deployment.project_id == pid)
+        )
+    ).scalar_one()
+    assert row.edges_notified is None  # never set
+    assert row.status == "failed"

@@ -37,6 +37,10 @@ from indusia_visual_editor.services.deploy.registry import (
     PushResult,
     push_model as _real_push_model,
 )
+from indusia_visual_editor.services.edge.notify import (
+    NotifyOutcome,
+    notify_edges as _real_notify_edges,
+)
 from indusia_visual_editor.services.project.crud import get_project
 from indusia_visual_editor.utils.responses import success
 
@@ -62,6 +66,21 @@ def set_push_model_callable(fn: PushCallable) -> None:
 def reset_push_model_callable() -> None:
     global _push_model_callable
     _push_model_callable = _real_push_model
+
+
+# Same factory-seam pattern for the M11 notify fan-out.
+NotifyCallable = Callable[..., Awaitable[list[NotifyOutcome]]]
+_notify_edges_callable: NotifyCallable = _real_notify_edges
+
+
+def set_notify_edges_callable(fn: NotifyCallable) -> None:
+    global _notify_edges_callable
+    _notify_edges_callable = fn
+
+
+def reset_notify_edges_callable() -> None:
+    global _notify_edges_callable
+    _notify_edges_callable = _real_notify_edges
 
 
 def _serialize(row: Deployment) -> dict[str, Any]:
@@ -141,7 +160,8 @@ async def promote_to_production(
 
     if not result.ok:
         # Persist the row, then surface a 502 envelope — the audit trail
-        # is locked in, the operator sees the failure.
+        # is locked in, the operator sees the failure. No notify on failure
+        # (CLAUDE.md §11 — edges only consume successful promotions).
         await session.commit()
         logger.warning(
             "deployment %s for project %s failed at stage=%s rc=%s",
@@ -157,6 +177,27 @@ async def promote_to_production(
                 f"{result.stderr.strip() or 'unknown error'}"
             ),
         )
+
+    # M11 — fan out the deployment to every registered edge. The notify
+    # service never raises (per-edge failures are recorded as outcomes),
+    # so a flaky edge does NOT roll back the deployment row.
+    outcomes = await _notify_edges_callable(
+        session=session,
+        deployment=row,
+        pcb_name=project.slug,
+    )
+    if outcomes:
+        row.edges_notified = {
+            o.name: {
+                "edge_id": o.edge_id,
+                "ok": o.ok,
+                "attempts": o.attempts,
+                "error": o.error,
+            }
+            for o in outcomes
+        }
+        await session.flush()
+        await session.refresh(row)
 
     return success(
         data=_serialize(row),
