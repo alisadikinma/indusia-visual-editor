@@ -113,6 +113,54 @@ class TrainingClient:
             )
         return job_id
 
+    async def get_predictions(self, job_id: str) -> list[dict[str, Any]]:
+        """GET `/api/eval/{job_id}/predictions`, return the prediction list.
+
+        Used by the M9 eval surface to render the worst-FP / worst-FN grid.
+        The service contract is a JSON array of prediction dicts (each with
+        designator + bbox + verdict + is_false_positive / is_false_negative
+        + score). The client round-trips the array verbatim — interpretation
+        lives in the frontend.
+
+        Raises:
+            InspectServiceConnectionError — service unreachable.
+            InspectServiceTimeoutError — service did not respond in time.
+            InspectServiceResponseError — non-2xx, malformed JSON, or
+                non-list payload.
+        """
+
+        try:
+            r = await self._http.get(f"/api/eval/{job_id}/predictions")
+        except httpx.TimeoutException as exc:
+            raise InspectServiceTimeoutError(
+                f"auto-inspect-service timed out on /api/eval/{job_id}/predictions: {exc}"
+            ) from exc
+        except (httpx.ConnectError, httpx.TransportError) as exc:
+            raise InspectServiceConnectionError(
+                f"Could not reach auto-inspect-service /api/eval/{job_id}/predictions: {exc}"
+            ) from exc
+
+        if not (200 <= r.status_code < 300):
+            raise InspectServiceResponseError(
+                f"auto-inspect-service /api/eval/{job_id}/predictions returned "
+                f"{r.status_code}: {r.text[:300]}"
+            )
+
+        try:
+            payload = r.json()
+        except ValueError as exc:
+            raise InspectServiceResponseError(
+                f"auto-inspect-service /api/eval/{job_id}/predictions returned "
+                f"non-JSON body: {r.text[:300]}"
+            ) from exc
+
+        if not isinstance(payload, list):
+            raise InspectServiceResponseError(
+                f"auto-inspect-service /api/eval/{job_id}/predictions returned "
+                f"non-list payload: {type(payload).__name__}"
+            )
+        return payload
+
     async def stream_progress(self, job_id: str) -> AsyncIterator[dict[str, Any]]:
         """Open the SSE progress stream and yield decoded JSON dicts.
 

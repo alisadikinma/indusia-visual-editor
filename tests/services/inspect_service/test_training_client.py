@@ -239,6 +239,79 @@ async def test_stream_progress_wraps_non_2xx_as_response_error():
         await client.aclose()
 
 
+# ---------------- Phase 9.1 — get_predictions ----------------
+
+
+@pytest.mark.asyncio
+async def test_get_predictions_returns_list_of_dicts():
+    """Eval surface — fetch sample predictions for a finished job_id.
+    The service contract is a JSON array of prediction dicts; the client
+    must round-trip it untouched."""
+
+    payload = [
+        {"designator": "C4", "verdict": "fail", "score": 0.9},
+        {"designator": "R7", "verdict": "pass", "score": 0.2},
+    ]
+    captured: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["method"] = request.method
+        return httpx.Response(200, json=payload)
+
+    client = _mock_client(handler)
+    try:
+        got = await client.get_predictions("job-eval-1")
+    finally:
+        await client.aclose()
+
+    assert got == payload
+    assert captured["method"] == "GET"
+    assert captured["url"].endswith("/api/eval/job-eval-1/predictions")
+
+
+@pytest.mark.asyncio
+async def test_get_predictions_wraps_connection_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("refused", request=request)
+
+    client = _mock_client(handler)
+    try:
+        with pytest.raises(InspectServiceConnectionError):
+            await client.get_predictions("job-x")
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_predictions_wraps_non_2xx_response():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, json={"detail": "boom"})
+
+    client = _mock_client(handler)
+    try:
+        with pytest.raises(InspectServiceResponseError):
+            await client.get_predictions("job-x")
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_get_predictions_rejects_non_list_body():
+    """The service contract is an array. A dict (or any non-list payload)
+    is a contract violation — fail loudly rather than silently coerce."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"oops": "not a list"})
+
+    client = _mock_client(handler)
+    try:
+        with pytest.raises(InspectServiceResponseError):
+            await client.get_predictions("job-x")
+    finally:
+        await client.aclose()
+
+
 @pytest.mark.skipif(
     not os.environ.get("IVE_INSPECT_SERVICE_INTEGRATION"),
     reason="set IVE_INSPECT_SERVICE_INTEGRATION=1 with a live auto-inspect-service",
