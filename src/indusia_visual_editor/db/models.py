@@ -113,6 +113,11 @@ class Project(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    train_runs: Mapped[list["TrainRun"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (UniqueConstraint("slug", name="uq_projects_slug"),)
 
@@ -275,6 +280,11 @@ class AdaptRun(Base):
     )
 
     project: Mapped[Project] = relationship(back_populates="adapt_runs")
+    train_runs: Mapped[list["TrainRun"]] = relationship(
+        back_populates="adapt_run",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class PreLabel(Base):
@@ -347,3 +357,54 @@ class Label(Base):
             "project_id", "side", "version", name="uq_labels_project_side_version"
         ),
     )
+
+
+class TrainRun(Base):
+    """Phase 7.2 — one row per `/api/projects/{id}/training/start` call.
+
+    The auto-inspect-service assigns a `service_job_id` synchronously and
+    then streams progress events over SSE; this row tracks the lifecycle.
+    `status` walks the standard machine pending → running → terminal
+    (succeeded / failed / cancelled). Terminal metrics land in
+    `metrics_json` (per-component F1 + mAP per the M9 eval contract).
+
+    The `adapt_run_id` link makes the lineage reproducible: a TrainRun
+    always knows the exact graphflow tree it was trained against.
+    """
+
+    __tablename__ = "train_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    adapt_run_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("adapt_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    service_job_id: Mapped[str] = mapped_column(Text, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+    )
+    metrics_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    error_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    project: Mapped[Project] = relationship(back_populates="train_runs")
+    adapt_run: Mapped[AdaptRun] = relationship(back_populates="train_runs")

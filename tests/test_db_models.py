@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy import select
 
 from indusia_visual_editor.db.models import (
+    AdaptRun,
     Asset,
     AssetKind,
     BomItem,
@@ -28,6 +29,7 @@ from indusia_visual_editor.db.models import (
     PreLabel,
     Project,
     ProjectStatus,
+    TrainRun,
 )
 
 
@@ -254,5 +256,145 @@ async def test_label_cascade_deletes_with_project(session: AsyncSession):
 
     remaining = (
         await session.execute(select(Label).where(Label.project_id == project_id))
+    ).scalars().all()
+    assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_train_run_row_persists_and_links_to_adapt_run(session: AsyncSession):
+    """Phase 7.2 — TrainRun tracks a service-side training job. Each row
+    pins back to the AdaptRun that produced the model_dir, so we can reproduce
+    the exact graphflow tree that was trained against."""
+    p = Project(name="train-board", slug=f"train-{uuid.uuid4().hex[:6]}")
+    session.add(p)
+    await session.flush()
+
+    adapt = AdaptRun(
+        project_id=p.id,
+        pcb_name="train-board",
+        model_dir="/srv/models/train-board",
+        inspected_count=3,
+        status="ok",
+    )
+    session.add(adapt)
+    await session.flush()
+
+    run = TrainRun(
+        project_id=p.id,
+        adapt_run_id=adapt.id,
+        service_job_id="job-abc-123",
+        status="pending",
+    )
+    session.add(run)
+    await session.flush()
+
+    fetched = (
+        await session.execute(select(TrainRun).where(TrainRun.project_id == p.id))
+    ).scalar_one()
+    assert fetched.adapt_run_id == adapt.id
+    assert fetched.service_job_id == "job-abc-123"
+    assert fetched.status == "pending"
+    assert fetched.metrics_json is None
+    assert fetched.error_text is None
+    assert fetched.started_at is not None
+    assert fetched.started_at.tzinfo is not None
+    assert fetched.ended_at is None
+
+
+@pytest.mark.asyncio
+async def test_train_run_status_check_constraint_rejects_unknown(session: AsyncSession):
+    """status CHECK constraint enforces the 5-value enum locked in the plan."""
+    p = Project(name="train-status-chk", slug=f"train-st-{uuid.uuid4().hex[:6]}")
+    session.add(p)
+    await session.flush()
+
+    adapt = AdaptRun(
+        project_id=p.id,
+        pcb_name="x",
+        model_dir="/srv/models/x",
+        inspected_count=1,
+    )
+    session.add(adapt)
+    await session.flush()
+
+    session.add(
+        TrainRun(
+            project_id=p.id,
+            adapt_run_id=adapt.id,
+            service_job_id="job-bogus",
+            status="frobnicated",
+        )
+    )
+    with pytest.raises(Exception):  # CHECK constraint violation
+        await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_train_run_cascade_deletes_with_project(session: AsyncSession):
+    p = Project(name="train-cascade", slug=f"train-cas-{uuid.uuid4().hex[:6]}")
+    session.add(p)
+    await session.flush()
+
+    adapt = AdaptRun(
+        project_id=p.id,
+        pcb_name="x",
+        model_dir="/srv/models/x",
+        inspected_count=1,
+    )
+    session.add(adapt)
+    await session.flush()
+    session.add(
+        TrainRun(
+            project_id=p.id,
+            adapt_run_id=adapt.id,
+            service_job_id="job-cascade",
+            status="pending",
+        )
+    )
+    await session.flush()
+    project_id = p.id
+
+    await session.delete(p)
+    await session.flush()
+
+    remaining = (
+        await session.execute(select(TrainRun).where(TrainRun.project_id == project_id))
+    ).scalars().all()
+    assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_train_run_cascade_deletes_with_adapt_run(session: AsyncSession):
+    """Deleting an AdaptRow should cascade to its TrainRuns — the lineage
+    is required by audit semantics."""
+    p = Project(name="train-adapt-cascade", slug=f"train-ac-{uuid.uuid4().hex[:6]}")
+    session.add(p)
+    await session.flush()
+
+    adapt = AdaptRun(
+        project_id=p.id,
+        pcb_name="x",
+        model_dir="/srv/models/x",
+        inspected_count=1,
+    )
+    session.add(adapt)
+    await session.flush()
+
+    session.add(
+        TrainRun(
+            project_id=p.id,
+            adapt_run_id=adapt.id,
+            service_job_id="job-ac",
+            status="pending",
+        )
+    )
+    await session.flush()
+    adapt_id = adapt.id
+
+    await session.delete(adapt)
+    await session.flush()
+
+    remaining = (
+        await session.execute(select(TrainRun).where(TrainRun.adapt_run_id == adapt_id))
     ).scalars().all()
     assert remaining == []
