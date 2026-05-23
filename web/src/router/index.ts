@@ -3,6 +3,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from "vue-router"
 import Dashboard from "@/views/Dashboard.vue";
 import EvalView from "@/views/EvalView.vue";
 import Gate1View from "@/views/Gate1View.vue";
+import Gate2View from "@/views/Gate2View.vue";
 import LabelingView from "@/views/LabelingView.vue";
 import ProjectWizard from "@/views/ProjectWizard.vue";
 import TrainingProgressView from "@/views/TrainingProgressView.vue";
@@ -37,6 +38,11 @@ export const routes: RouteRecordRaw[] = [
     path: "/projects/:id/eval/:runId",
     name: "eval",
     component: EvalView,
+  },
+  {
+    path: "/projects/:id/eval/:runId/gate2",
+    name: "gate2",
+    component: Gate2View,
   },
 ];
 
