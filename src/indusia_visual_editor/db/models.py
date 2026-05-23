@@ -123,6 +123,11 @@ class Project(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    chat_sessions: Mapped[list["ChatSession"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (UniqueConstraint("slug", name="uq_projects_slug"),)
 
@@ -509,3 +514,46 @@ class Edge(Base):
     )
 
     __table_args__ = (UniqueConstraint("name", name="uq_edges_name"),)
+
+
+class ChatSession(Base):
+    """Phase 12.1 — operator <-> Gemma advisor conversation history.
+
+    One row per session; the operator may open multiple sessions per
+    project (e.g. one for false-positive debugging, another for training
+    hyperparameter tuning). `messages_json` is a JSONB array of
+    `{role, content, ts}` turns appended in order by the streaming SSE
+    endpoint (Phase 12.3) once each assistant response terminates.
+
+    There is no version column — chat history is intrinsically append-
+    only, no diff/rollback semantics. `updated_at` reflects the last
+    appended turn.
+    """
+
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    messages_json: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    project: Mapped[Project] = relationship(back_populates="chat_sessions")
