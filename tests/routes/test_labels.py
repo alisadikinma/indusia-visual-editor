@@ -448,3 +448,42 @@ async def test_post_labels_422_invalid_side(client: AsyncClient):
         json={"ls_json": _annotation_with("R1", "skipped")},
     )
     assert r.status_code == 422
+
+
+# ---------------- Phase 6.6 — detector_presets + scope_mode column writes ----------------
+
+
+@pytest.mark.asyncio
+async def test_post_labels_persists_detector_presets_and_scope_mode(
+    client: AsyncClient, query_session: AsyncSession
+):
+    """Phase 6.6 — derive_inspect_scope output rides all the way to bom_items
+    rows: inspect_scope + scope_mode + detector_presets (JSONB list)."""
+    pid = await _create_project(client, "submit-presets")
+    await _upload_bom(client, pid)
+    await _upload_golden(client, pid, "top")
+
+    ann = _annotation_with("R1", "inspected", ["missing_component", "polarity_flip"])
+    r = await client.post(
+        f"/api/projects/{pid}/labels",
+        params={"side": "top"},
+        json={"ls_json": ann},
+    )
+    assert r.status_code == 201, r.text
+
+    bom = (
+        await query_session.execute(
+            select(BomItem).where(
+                BomItem.project_id == pid, BomItem.designator == "R1"
+            )
+        )
+    ).scalar_one()
+
+    assert bom.inspect_scope == InspectScope.INSPECTED
+    assert bom.scope_mode == "per_component"
+    assert isinstance(bom.detector_presets, list)
+    assert len(bom.detector_presets) > 0
+    # missing_component → yolo; polarity_flip → polarity_template (per
+    # data/defect_detector_mapping.yaml).
+    assert "yolo" in bom.detector_presets
+    assert "polarity_template" in bom.detector_presets

@@ -293,9 +293,8 @@ async def submit_labels(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    # Propagate per-region inspect_scope onto bom_items. detector_presets +
-    # scope_mode columns land in Phase 6.6; for now scope is the only
-    # column we write back.
+    # Propagate per-region derived values onto bom_items. Phase 6.6 added
+    # scope_mode + detector_presets columns; we write all three here.
     if updates:
         bom_rows = await _load_bom(session, project_id)
         by_des = {b.designator: b for b in bom_rows}
@@ -307,6 +306,8 @@ async def submit_labels(
                 # cannot happen except via tampered submits.
                 continue
             row.inspect_scope = InspectScope(upd.inspect_scope)
+            row.scope_mode = upd.scope_mode
+            row.detector_presets = list(upd.detector_presets)
 
     # Next version per (project, side).
     latest = (

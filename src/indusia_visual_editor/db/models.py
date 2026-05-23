@@ -189,6 +189,21 @@ class BomItem(Base):
         Integer, nullable=False, default=0, server_default="0"
     )
 
+    # M6 Phase 6.6 — derived from the canvas annotation by
+    # services/inspect_scope/derive.derive_inspect_scope and persisted by
+    # POST /api/projects/{id}/labels. scope_mode is per_component for the
+    # vast majority of regions; whole_side is the solder_short escape hatch.
+    scope_mode: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="per_component",
+        server_default="per_component",
+    )
+    # detector_presets: list[str] of names from
+    # data/defect_detector_mapping.yaml — never freeform. The M4 adapter
+    # reads this column to build the graphflow subgraph per designator.
+    detector_presets: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
     # Preserved extra columns from the original BOM upload (manufacturer,
     # tolerance, supplier, etc.) — schemaless on purpose.
     extra: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
