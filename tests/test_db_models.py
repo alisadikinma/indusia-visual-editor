@@ -24,6 +24,7 @@ from indusia_visual_editor.db.models import (
     Asset,
     AssetKind,
     BomItem,
+    Deployment,
     InspectScope,
     Label,
     PreLabel,
@@ -396,5 +397,129 @@ async def test_train_run_cascade_deletes_with_adapt_run(session: AsyncSession):
 
     remaining = (
         await session.execute(select(TrainRun).where(TrainRun.adapt_run_id == adapt_id))
+    ).scalars().all()
+    assert remaining == []
+
+
+# ---------------- Phase 10.2 — deployments table ----------------
+
+
+async def _seed_succeeded_train_run(session: AsyncSession) -> TrainRun:
+    p = Project(name="dep-board", slug=f"dep-{uuid.uuid4().hex[:6]}")
+    session.add(p)
+    await session.flush()
+    adapt = AdaptRun(
+        project_id=p.id,
+        pcb_name="dep-board",
+        model_dir="/srv/models/dep",
+        inspected_count=1,
+        status="ok",
+    )
+    session.add(adapt)
+    await session.flush()
+    run = TrainRun(
+        project_id=p.id,
+        adapt_run_id=adapt.id,
+        service_job_id="job-dep",
+        status="succeeded",
+        metrics_json={"mAP": 0.9},
+    )
+    session.add(run)
+    await session.flush()
+    return run
+
+
+@pytest.mark.asyncio
+async def test_deployment_row_persists_with_model_version(session: AsyncSession):
+    run = await _seed_succeeded_train_run(session)
+    dep = Deployment(
+        project_id=run.project_id,
+        train_run_id=run.id,
+        model_version="2026-05-23-001",
+        status="succeeded",
+        edges_notified=None,
+    )
+    session.add(dep)
+    await session.flush()
+
+    fetched = (
+        await session.execute(
+            select(Deployment).where(Deployment.train_run_id == run.id)
+        )
+    ).scalar_one()
+    assert fetched.project_id == run.project_id
+    assert fetched.train_run_id == run.id
+    assert fetched.model_version == "2026-05-23-001"
+    assert fetched.status == "succeeded"
+    assert fetched.deployed_at is not None
+    assert fetched.deployed_at.tzinfo is not None
+    assert fetched.edges_notified is None
+    assert fetched.error_text is None
+
+
+@pytest.mark.asyncio
+async def test_deployment_status_check_constraint_rejects_unknown(
+    session: AsyncSession,
+):
+    run = await _seed_succeeded_train_run(session)
+    session.add(
+        Deployment(
+            project_id=run.project_id,
+            train_run_id=run.id,
+            model_version="x",
+            status="frobnicated",
+        )
+    )
+    with pytest.raises(Exception):
+        await session.flush()
+
+
+@pytest.mark.asyncio
+async def test_deployment_cascade_deletes_with_project(session: AsyncSession):
+    run = await _seed_succeeded_train_run(session)
+    project_id = run.project_id
+    session.add(
+        Deployment(
+            project_id=project_id,
+            train_run_id=run.id,
+            model_version="v1",
+            status="succeeded",
+        )
+    )
+    await session.flush()
+
+    project = await session.get(Project, project_id)
+    await session.delete(project)
+    await session.flush()
+
+    remaining = (
+        await session.execute(
+            select(Deployment).where(Deployment.project_id == project_id)
+        )
+    ).scalars().all()
+    assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_deployment_cascade_deletes_with_train_run(session: AsyncSession):
+    run = await _seed_succeeded_train_run(session)
+    train_run_id = run.id
+    session.add(
+        Deployment(
+            project_id=run.project_id,
+            train_run_id=train_run_id,
+            model_version="v2",
+            status="succeeded",
+        )
+    )
+    await session.flush()
+
+    await session.delete(run)
+    await session.flush()
+
+    remaining = (
+        await session.execute(
+            select(Deployment).where(Deployment.train_run_id == train_run_id)
+        )
     ).scalars().all()
     assert remaining == []

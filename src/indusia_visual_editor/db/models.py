@@ -118,6 +118,11 @@ class Project(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    deployments: Mapped[list["Deployment"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     __table_args__ = (UniqueConstraint("slug", name="uq_projects_slug"),)
 
@@ -408,3 +413,57 @@ class TrainRun(Base):
 
     project: Mapped[Project] = relationship(back_populates="train_runs")
     adapt_run: Mapped[AdaptRun] = relationship(back_populates="train_runs")
+    deployments: Mapped[list["Deployment"]] = relationship(
+        back_populates="train_run",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class Deployment(Base):
+    """Phase 10.2 — one row per `/api/projects/{id}/deploy` invocation.
+
+    Records the outcome of pushing a TrainRun's weights to the production
+    Git+LFS registry via the `ais model {add,commit,push}` subprocess
+    sequence. `model_version` is the human-readable label the operator
+    sees (a timestamp-based slug today; could become semver if the registry
+    grows one). `status` walks pending → succeeded / failed; the failed
+    state captures the stage that produced the terminal error in
+    `error_text` so the operator can re-attempt from the right step.
+
+    `edges_notified` will be populated by M11; for M10 it stays null.
+    """
+
+    __tablename__ = "deployments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    train_run_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("train_runs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    model_version: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+    )
+    edges_notified: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    deployed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+    error_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    project: Mapped[Project] = relationship(back_populates="deployments")
+    train_run: Mapped[TrainRun] = relationship(back_populates="deployments")
