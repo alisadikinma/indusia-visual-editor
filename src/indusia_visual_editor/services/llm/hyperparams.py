@@ -13,7 +13,6 @@ Plan §8.2: `epochs` in [5, 200]; `batch_size` in [4, 64];
 from __future__ import annotations
 
 import json
-import logging
 import time
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -21,8 +20,9 @@ from typing import Any, Literal, Protocol
 from pydantic import BaseModel, Field, ValidationError
 
 from indusia_visual_editor.services.llm.exceptions import LlmValidationError
+from indusia_visual_editor.utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "hyperparams.md"
 

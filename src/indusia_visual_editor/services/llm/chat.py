@@ -20,7 +20,6 @@ varies, but 4 chars/token is the common rule of thumb. 200K tokens ~=
 
 from __future__ import annotations
 
-import logging
 import uuid
 from pathlib import Path
 from typing import Any
@@ -29,9 +28,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from indusia_visual_editor.db.models import ChatSession, Project, TrainRun
+from indusia_visual_editor.utils.logging_config import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 MAX_TURNS = 20

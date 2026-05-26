@@ -15,7 +15,6 @@ a clean audit trail of what the operator asked.
 from __future__ import annotations
 
 import json
-import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -37,10 +36,11 @@ from indusia_visual_editor.services.llm.exceptions import (
     LlmResponseError,
     LlmTimeoutError,
 )
+from indusia_visual_editor.utils.logging_config import get_logger
 from indusia_visual_editor.utils.responses import success
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 router = APIRouter(tags=["chat"])

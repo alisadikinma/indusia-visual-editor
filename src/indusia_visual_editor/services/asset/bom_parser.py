@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import csv
 import io
-import logging
 import re
 from pathlib import Path
 
@@ -31,8 +30,9 @@ from openpyxl import load_workbook
 from pydantic import BaseModel
 
 from indusia_visual_editor.services.asset.mi_classifier import classify
+from indusia_visual_editor.utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Fuzzy column synonyms — substring match, case-insensitive.

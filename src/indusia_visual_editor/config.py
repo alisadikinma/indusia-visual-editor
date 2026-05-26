@@ -18,6 +18,9 @@ class AppConfig(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8002
     log_level: str = "INFO"
+    # M14.4 — structlog renderer mode. "prod" → JSON (machine-parseable
+    # for the log aggregator); "dev" → console renderer (human-readable).
+    log_mode: str = "prod"
     database_url: str | None = None
 
     # Phase 1.3 — asset storage

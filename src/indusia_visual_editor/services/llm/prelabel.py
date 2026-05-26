@@ -14,7 +14,6 @@ the result, and surfacing transport errors as 502 envelopes.
 from __future__ import annotations
 
 import json
-import logging
 import time
 from pathlib import Path
 from typing import Any, Protocol
@@ -23,8 +22,9 @@ from pydantic import BaseModel, ValidationError
 
 from indusia_visual_editor.services.llm.exceptions import LlmValidationError
 from indusia_visual_editor.services.llm.schemas import PreLabeledRegion
+from indusia_visual_editor.utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "prelabel.md"
 

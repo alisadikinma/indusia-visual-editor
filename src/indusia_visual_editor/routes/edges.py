@@ -8,7 +8,6 @@ PUT    /api/edges/{id}/pin   — manual rollback / unpin
 
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import Any
 
@@ -26,10 +25,11 @@ from indusia_visual_editor.schemas.edges import (
     EdgeUpdate,
 )
 from indusia_visual_editor.services.auth.dependencies import get_current_user
+from indusia_visual_editor.utils.logging_config import get_logger
 from indusia_visual_editor.utils.responses import success
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 router = APIRouter(prefix="/api/edges", tags=["edges"])

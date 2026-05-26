@@ -18,7 +18,6 @@ calls leave transport as None and let httpx open real sockets.
 from __future__ import annotations
 
 import asyncio
-import logging
 from dataclasses import dataclass
 
 import httpx
@@ -26,9 +25,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from indusia_visual_editor.db.models import Deployment, Edge
+from indusia_visual_editor.utils.logging_config import get_logger
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # Indirected sleep so tests can patch to zero without breaking module imports.

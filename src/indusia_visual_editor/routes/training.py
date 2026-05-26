@@ -20,7 +20,6 @@ returned a row.
 from __future__ import annotations
 
 import json
-import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -53,10 +52,11 @@ from indusia_visual_editor.services.llm.exceptions import (
 )
 from indusia_visual_editor.services.llm.hyperparams import suggest_hyperparams
 from indusia_visual_editor.services.project.crud import get_project
+from indusia_visual_editor.utils.logging_config import get_logger
 from indusia_visual_editor.utils.responses import success
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 router = APIRouter(prefix="/api/projects/{project_id}/training", tags=["training"])

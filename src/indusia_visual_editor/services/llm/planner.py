@@ -11,7 +11,6 @@ a real route and persists to the `proposed_pipelines` table.
 from __future__ import annotations
 
 import json
-import logging
 import time
 from pathlib import Path
 from typing import Any, Protocol
@@ -20,8 +19,9 @@ from pydantic import BaseModel, ValidationError
 
 from indusia_visual_editor.services.llm.exceptions import LlmValidationError
 from indusia_visual_editor.services.llm.schemas import ProposedPipeline
+from indusia_visual_editor.utils.logging_config import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _PROMPT_PATH = Path(__file__).resolve().parent / "prompts" / "planner.md"
 

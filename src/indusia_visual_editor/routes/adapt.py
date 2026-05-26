@@ -14,7 +14,6 @@ GET /api/projects/{id}/adapt
 
 from __future__ import annotations
 
-import logging
 import uuid
 from pathlib import Path
 
@@ -33,9 +32,10 @@ from indusia_visual_editor.services.adapter.compose import (
 )
 from indusia_visual_editor.services.auth.dependencies import get_current_user
 from indusia_visual_editor.services.project.crud import get_project
+from indusia_visual_editor.utils.logging_config import get_logger
 from indusia_visual_editor.utils.responses import success
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/projects/{project_id}/adapt", tags=["adapter"])
 

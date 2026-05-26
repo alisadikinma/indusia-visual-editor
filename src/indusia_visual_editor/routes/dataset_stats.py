@@ -19,7 +19,6 @@ Training" button).
 
 from __future__ import annotations
 
-import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -34,10 +33,11 @@ from indusia_visual_editor.services.inspect_scope.derive import (
     derive_inspect_scope,
 )
 from indusia_visual_editor.services.project.crud import get_project
+from indusia_visual_editor.utils.logging_config import get_logger
 from indusia_visual_editor.utils.responses import success
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 router = APIRouter(prefix="/api/projects/{project_id}/dataset", tags=["dataset"])

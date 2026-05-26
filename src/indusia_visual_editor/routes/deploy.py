@@ -19,7 +19,6 @@ subprocess in CI).
 
 from __future__ import annotations
 
-import logging
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -43,10 +42,11 @@ from indusia_visual_editor.services.edge.notify import (
     notify_edges as _real_notify_edges,
 )
 from indusia_visual_editor.services.project.crud import get_project
+from indusia_visual_editor.utils.logging_config import get_logger
 from indusia_visual_editor.utils.responses import success
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 router = APIRouter(prefix="/api/projects/{project_id}/deploy", tags=["deploy"])
