@@ -446,7 +446,8 @@ This is a single-maintainer project. The repo's `main` branch is the working tru
 | Rule | Detail |
 |---|---|
 | **Default target** | Push directly to `origin/main` after each green phase. Do NOT open a PR by default. |
-| **When to branch** | Only on operator request (e.g. "buat PR dulu") or when a change is risky enough that a review-before-merge is useful (e.g. force-push, history rewrite, schema-destructive migration). |
+| **No new branches** (LOCKED 2026-05-26) | The agent MUST NOT create new branches under any circumstance, including `feat/*`, `fix/*`, `docs/*`, or hotfix branches. ALL changes — features, fixes, refactors, docs, experiments — commit + push directly to `main`. Historical M0–M14 saw orphaned `feat/m0-m1-m2-bootstrap-bom-pipeline` + `docs/m4-plan-breakdown` branches that had to be hand-cleaned; this rule prevents the regression. Only the operator may create a branch by hand if they explicitly ask for one. |
+| **When to branch** | Only on explicit operator request (e.g. "buat PR dulu", "branch this"). Risk arguments (force-push, history rewrite, schema-destructive migration) DO NOT auto-trigger a branch — surface the risk, get explicit operator approval, and only then branch. |
 | **Commit hygiene** | One conventional commit per phase, with the gaspol-execute Co-Authored-By trailer. Atomic — green tests before commit, never partial state. |
 | **Pushing** | `git push origin main` is the standard end-of-phase action. Auto-mode classifier may still block this on first invocation; the operator pre-authorizes by adding `Bash(git push origin main:*)` to `.claude/settings.local.json`. Until that whitelist lands, the fallback is: operator runs the push manually from PowerShell, or merges a thin PR via the GitHub UI. |
 | **Self-modification** | The agent is NOT allowed to edit `.claude/settings.local.json` itself — that's a high-trust action reserved for the operator. The agent surfaces the exact snippet to paste and waits. |
