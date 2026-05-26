@@ -6,6 +6,7 @@ import {
   type LabelingTask,
   type LabelSnapshot,
 } from "../api/labels";
+import { runPreLabel as apiRunPreLabel } from "../api/prelabel";
 
 type Side = "top" | "bottom";
 
@@ -14,6 +15,7 @@ type State = {
   task: LabelingTask | null;
   loading: boolean;
   saving: boolean;
+  refreshing: boolean;
   error: string | null;
   latest: LabelSnapshot | null;
 };
@@ -33,6 +35,7 @@ export const useLabelsStore = defineStore("labels", {
     task: null,
     loading: false,
     saving: false,
+    refreshing: false,
     error: null,
     latest: null,
   }),
@@ -48,6 +51,18 @@ export const useLabelsStore = defineStore("labels", {
         this.error = extractErrorMessage(e);
       } finally {
         this.loading = false;
+      }
+    },
+    async refreshPredictions(projectId: string) {
+      this.refreshing = true;
+      this.error = null;
+      try {
+        await apiRunPreLabel(projectId, this.side);
+        this.task = await apiGetTask(projectId, this.side);
+      } catch (e) {
+        this.error = extractErrorMessage(e);
+      } finally {
+        this.refreshing = false;
       }
     },
     async submit(projectId: string, lsJson: { result: unknown[] }) {
@@ -67,6 +82,7 @@ export const useLabelsStore = defineStore("labels", {
       this.latest = null;
       this.loading = false;
       this.saving = false;
+      this.refreshing = false;
       this.side = "top";
     },
   },

@@ -39,6 +39,10 @@ function onSubmit(annotation: { result: unknown[] }) {
   store.submit(projectId.value, annotation);
 }
 
+function refreshPredictions() {
+  store.refreshPredictions(projectId.value);
+}
+
 function onUpdate(_annotation: { result: unknown[] }) {
   // Live-update hook — wired so future "skipped-region dim" CSS overlay
   // can subscribe without re-architecting. Intentionally empty for v1.
@@ -61,6 +65,17 @@ function onLoadError(message: string) {
           <span class="font-mono text-text-secondary">{{ projectId }}</span>
         </p>
       </div>
+
+      <div class="flex items-center gap-3">
+      <button
+        type="button"
+        class="rounded-md border border-border-default bg-bg-elevated px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-text-primary transition-colors hover:bg-bg-deep disabled:cursor-not-allowed disabled:opacity-50"
+        :disabled="store.refreshing || store.loading || !store.task"
+        data-testid="refresh-predictions"
+        @click="refreshPredictions"
+      >
+        Muat ulang prediksi
+      </button>
 
       <div
         class="flex items-center gap-2 rounded-md border border-border-default bg-bg-elevated p-1"
@@ -94,7 +109,16 @@ function onLoadError(message: string) {
           Bawah
         </button>
       </div>
+      </div>
     </header>
+
+    <p
+      v-if="store.refreshing"
+      class="mb-4 text-sm text-text-secondary"
+      data-testid="refreshing-indicator"
+    >
+      Membuat prediksi baru dari Gemma...
+    </p>
 
     <p
       v-if="store.loading"

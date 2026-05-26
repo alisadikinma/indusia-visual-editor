@@ -11,6 +11,12 @@ vi.mock("../api/labels", () => ({
   absoluteImageUrl: (rel: string) => `http://localhost:8002${rel}`,
 }));
 
+const prelabelMocks = vi.hoisted(() => ({
+  runPreLabel: vi.fn(),
+  getPreLabel: vi.fn(),
+}));
+vi.mock("../api/prelabel", () => prelabelMocks);
+
 vi.mock("../components/LSFEmbed.vue", () => ({
   default: {
     name: "LSFEmbedStub",
@@ -49,6 +55,8 @@ describe("LabelingView", () => {
     setActivePinia(createPinia());
     (getTask as unknown as ReturnType<typeof vi.fn>).mockReset();
     (submitLabels as unknown as ReturnType<typeof vi.fn>).mockReset();
+    prelabelMocks.runPreLabel.mockReset();
+    prelabelMocks.getPreLabel.mockReset();
   });
 
   it("fetches the task on mount and passes config+task to LSFEmbed", async () => {
@@ -113,6 +121,84 @@ describe("LabelingView", () => {
       result: [{ id: "abc" }],
     });
     expect(wrapper.find('[data-testid="save-indicator"]').text()).toContain("v3");
+  });
+
+  it("refreshes predictions when the refresh button is clicked", async () => {
+    (getTask as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(baseTaskResp("top"))
+      .mockResolvedValueOnce(baseTaskResp("top"));
+    prelabelMocks.runPreLabel.mockResolvedValueOnce({
+      id: "pre-run-9",
+      project_id: "pid-1",
+      side: "top",
+      regions: [],
+      created_at: "2026-05-26T00:00:00Z",
+    });
+
+    const router = makeRouter();
+    await router.push("/projects/pid-1/labeling");
+    const wrapper = mount(LabelingView, {
+      global: { plugins: [router] },
+    });
+    await flushPromises();
+
+    const btn = wrapper.find('[data-testid="refresh-predictions"]');
+    expect(btn.exists()).toBe(true);
+    expect(btn.text()).toContain("Muat ulang prediksi");
+
+    await btn.trigger("click");
+    await flushPromises();
+
+    expect(prelabelMocks.runPreLabel).toHaveBeenCalledWith("pid-1", "top");
+    expect(getTask).toHaveBeenCalledTimes(2);
+  });
+
+  it("disables the refresh button while refreshing", async () => {
+    (getTask as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(baseTaskResp("top"))
+      .mockResolvedValueOnce(baseTaskResp("top"));
+
+    let resolveRun: (v: unknown) => void = () => {};
+    prelabelMocks.runPreLabel.mockImplementationOnce(
+      () =>
+        new Promise((res) => {
+          resolveRun = res;
+        }),
+    );
+
+    const router = makeRouter();
+    await router.push("/projects/pid-1/labeling");
+    const wrapper = mount(LabelingView, {
+      global: { plugins: [router] },
+    });
+    await flushPromises();
+
+    const btn = wrapper.find('[data-testid="refresh-predictions"]');
+    await btn.trigger("click");
+    await flushPromises();
+
+    expect(
+      (btn.element as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      wrapper.find('[data-testid="refreshing-indicator"]').exists(),
+    ).toBe(true);
+
+    resolveRun({
+      id: "pre-run-9",
+      project_id: "pid-1",
+      side: "top",
+      regions: [],
+      created_at: "2026-05-26T00:00:00Z",
+    });
+    await flushPromises();
+
+    expect(
+      (
+        wrapper.find('[data-testid="refresh-predictions"]')
+          .element as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
   });
 
   it("shows an error envelope when getTask fails with 422", async () => {
