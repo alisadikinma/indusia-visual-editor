@@ -28,6 +28,7 @@ dependencies = [
     "opentelemetry-instrumentation-fastapi>=0.48b0,<1.0.0",
     "opentelemetry-instrumentation-httpx>=0.48b0,<1.0.0",
     "opentelemetry-exporter-otlp-proto-http>=1.27.0,<2.0.0",
+    "alembic>=1.14.0,<2.0.0",
 ]
 
 [tool.poetry]
@@ -36,7 +37,6 @@ packages = [{ include = "indusia_visual_editor", from = "src" }]
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.0"
 pytest-asyncio = "^0.24.0"
-alembic = "^1.14.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

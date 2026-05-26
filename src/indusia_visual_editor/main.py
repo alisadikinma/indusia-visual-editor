@@ -105,14 +105,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(RequestContextMiddleware)
 
-# Dev CORS: the Vue frontend runs on Vite at :5173. Production CORS will be
-# locked down at M14 via Traefik or an env-var allowlist.
+# CORS allowlist — env-configurable via IVE_CORS_ALLOW_ORIGINS (comma-separated).
+# Defaults cover the Vite dev server (:5173) + the local prod nginx (:8080).
+_cors_origins = [
+    origin.strip()
+    for origin in get_config().cors_allow_origins.split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

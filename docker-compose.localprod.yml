@@ -1,0 +1,96 @@
+# Localhost-flavored production stack for indusia-visual-editor.
+#
+# Use this on a developer/operator machine that has Docker Desktop but NO
+# public DNS — i.e. for trial runs, local pilots, or pre-flight smoke before
+# you ship the real prod stack (docker-compose.prod.yml) to a public host.
+#
+# Differences from docker-compose.prod.yml:
+#   - No Traefik (ACME http-01 needs public DNS).
+#   - Plain HTTP everywhere — IVE_AUTH_REFRESH_COOKIE_SECURE=false so the
+#     refresh cookie still works without TLS.
+#   - api on host :8002, web on host :8080, postgres on host :5433 so
+#     you can hit them directly without a reverse proxy.
+#   - Postgres uses a separate named volume (ive-postgres-localprod) so it
+#     does NOT clash with the dev compose volume.
+#   - backup-scheduler omitted (no S3 typical on a local box; run pg_backup
+#     by hand if needed).
+#
+# Bring up:
+#   docker compose -f docker-compose.localprod.yml --env-file .env.prod up -d --build
+#   docker compose -f docker-compose.localprod.yml --env-file .env.prod exec api alembic upgrade head
+#
+# Smoke:
+#   curl http://localhost:8002/health
+#   open http://localhost:8080
+
+services:
+  api:
+    image: indusia-api:localprod
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+      target: runtime
+    container_name: ive-api-localprod
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      IVE_DATABASE_URL: postgresql+asyncpg://ive:${POSTGRES_PASSWORD}@postgres:5432/ive
+      IVE_APP_HOST: 0.0.0.0
+      IVE_APP_PORT: 8002
+      IVE_APP_WORKERS: 2
+      IVE_LOG_LEVEL: INFO
+      IVE_LOG_MODE: prod
+      IVE_AUTH_JWT_SECRET: ${IVE_AUTH_JWT_SECRET}
+      IVE_AUTH_REFRESH_COOKIE_SECURE: "false"
+      IVE_CORS_ALLOW_ORIGINS: "http://localhost:8080,http://127.0.0.1:8080"
+      IVE_OLLAMA_URL: ${IVE_OLLAMA_URL:-http://host.docker.internal:11434}
+    ports:
+      - "8002:8002"
+    networks:
+      - ive-localprod
+
+  web:
+    image: indusia-web:localprod
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      target: runtime
+    container_name: ive-web-localprod
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:8080"
+    networks:
+      - ive-localprod
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ive-postgres-localprod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ive
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ive
+    ports:
+      - "5433:5432"
+    volumes:
+      - ive-postgres-localprod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ive -d ive"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    networks:
+      - ive-localprod
+
+networks:
+  ive-localprod:
+    name: ive-localprod
+
+volumes:
+  ive-postgres-localprod:
+    name: ive-postgres-localprod

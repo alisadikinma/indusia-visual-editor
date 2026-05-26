@@ -62,6 +62,14 @@ class AppConfig(BaseSettings):
     auth_refresh_cookie_name: str = "ive_refresh"
     auth_refresh_cookie_secure: bool = False  # flipped to True behind Traefik HTTPS
 
+    # M14.7 — CORS allowlist. Comma-separated origins; defaults cover the
+    # Vite dev server (:5173) + the local prod nginx container (:8080).
+    # Override via IVE_CORS_ALLOW_ORIGINS in prod with your real hostnames.
+    cors_allow_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,"
+        "http://localhost:8080,http://127.0.0.1:8080"
+    )
+
 
 from functools import lru_cache
 
