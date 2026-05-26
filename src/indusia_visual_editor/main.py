@@ -46,6 +46,7 @@ from indusia_visual_editor.utils.logging_config import (
     configure_logging,
     get_logger,
 )
+from indusia_visual_editor.utils.otel_config import configure_otel
 from indusia_visual_editor.utils.responses import failed
 
 # Configure structlog once at import time using whatever env/.env says. The
@@ -58,11 +59,27 @@ configure_logging(
 )
 logger = get_logger(__name__)
 
+# Install the OTel TracerProvider once. With no `OTEL_EXPORTER_OTLP_ENDPOINT`
+# set, this is a near-zero-overhead no-op — spans are still created so any
+# `tracer.start_as_current_span` lines in services stay valid. Production
+# wires the env var (e.g. `http://otel-collector:4318/v1/traces`) and spans
+# flow to the collector.
+configure_otel()
+
 app = FastAPI(
     title="Indusia Visual Editor",
     version=__version__,
     description="Factory-user-driven PCB inspection platform.",
 )
+
+# Auto-instrument inbound HTTP. Adds a span per request named
+# `<METHOD> <route>` carrying `http.status_code`, `http.target`, etc.
+# Outbound httpx calls get instrumented too (matches Ollama + edge notify).
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor  # noqa: E402
+from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor  # noqa: E402
+
+FastAPIInstrumentor.instrument_app(app)
+HTTPXClientInstrumentor().instrument()
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):

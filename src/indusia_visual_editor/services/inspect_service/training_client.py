@@ -32,6 +32,9 @@ from indusia_visual_editor.services.inspect_service.exceptions import (
     InspectServiceResponseError,
     InspectServiceTimeoutError,
 )
+from indusia_visual_editor.utils.otel_config import get_tracer
+
+_tracer = get_tracer(__name__)
 
 
 class TrainingClient:
@@ -78,40 +81,44 @@ class TrainingClient:
                 missing `job_id` in the body.
         """
 
-        try:
-            r = await self._http.post(
-                "/api/training/start", json={"model_dir": model_dir}
-            )
-        except httpx.TimeoutException as exc:
-            raise InspectServiceTimeoutError(
-                f"auto-inspect-service timed out on /api/training/start: {exc}"
-            ) from exc
-        except (httpx.ConnectError, httpx.TransportError) as exc:
-            raise InspectServiceConnectionError(
-                f"Could not reach auto-inspect-service /api/training/start: {exc}"
-            ) from exc
+        with _tracer.start_as_current_span(
+            "inspect_service.start_training",
+            attributes={"inspect.model_dir": model_dir},
+        ):
+            try:
+                r = await self._http.post(
+                    "/api/training/start", json={"model_dir": model_dir}
+                )
+            except httpx.TimeoutException as exc:
+                raise InspectServiceTimeoutError(
+                    f"auto-inspect-service timed out on /api/training/start: {exc}"
+                ) from exc
+            except (httpx.ConnectError, httpx.TransportError) as exc:
+                raise InspectServiceConnectionError(
+                    f"Could not reach auto-inspect-service /api/training/start: {exc}"
+                ) from exc
 
-        if not (200 <= r.status_code < 300):
-            raise InspectServiceResponseError(
-                f"auto-inspect-service /api/training/start returned "
-                f"{r.status_code}: {r.text[:300]}"
-            )
+            if not (200 <= r.status_code < 300):
+                raise InspectServiceResponseError(
+                    f"auto-inspect-service /api/training/start returned "
+                    f"{r.status_code}: {r.text[:300]}"
+                )
 
-        try:
-            payload = r.json()
-        except ValueError as exc:
-            raise InspectServiceResponseError(
-                f"auto-inspect-service /api/training/start returned "
-                f"non-JSON body: {r.text[:300]}"
-            ) from exc
+            try:
+                payload = r.json()
+            except ValueError as exc:
+                raise InspectServiceResponseError(
+                    f"auto-inspect-service /api/training/start returned "
+                    f"non-JSON body: {r.text[:300]}"
+                ) from exc
 
-        job_id = payload.get("job_id") if isinstance(payload, dict) else None
-        if not job_id or not isinstance(job_id, str):
-            raise InspectServiceResponseError(
-                f"auto-inspect-service /api/training/start did not return "
-                f"a `job_id` field: {payload!r}"
-            )
-        return job_id
+            job_id = payload.get("job_id") if isinstance(payload, dict) else None
+            if not job_id or not isinstance(job_id, str):
+                raise InspectServiceResponseError(
+                    f"auto-inspect-service /api/training/start did not return "
+                    f"a `job_id` field: {payload!r}"
+                )
+            return job_id
 
     async def get_predictions(self, job_id: str) -> list[dict[str, Any]]:
         """GET `/api/eval/{job_id}/predictions`, return the prediction list.

@@ -26,9 +26,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from indusia_visual_editor.db.models import Deployment, Edge
 from indusia_visual_editor.utils.logging_config import get_logger
+from indusia_visual_editor.utils.otel_config import get_tracer
 
 
 logger = get_logger(__name__)
+_tracer = get_tracer(__name__)
 
 
 # Indirected sleep so tests can patch to zero without breaking module imports.
@@ -123,24 +125,38 @@ async def notify_edges(
     if not rows:
         return []
 
-    outcomes: list[NotifyOutcome] = []
-    async with httpx.AsyncClient(
-        transport=http_transport, timeout=timeout
-    ) as client:
-        for edge in rows:
-            model_name, version = _resolve_target(
-                edge,
-                deployment_model_name=pcb_name,
-                deployment_version=deployment.model_version,
-            )
-            body = {"model_name": model_name, "version": version}
-            outcome = await _notify_one(client, edge, body)
-            outcomes.append(outcome)
-            if not outcome.ok:
-                logger.warning(
-                    "edge notify failed: edge=%s attempts=%d error=%s",
-                    outcome.name,
-                    outcome.attempts,
-                    outcome.error,
+    with _tracer.start_as_current_span(
+        "edge.notify_edges",
+        attributes={
+            "edge.count": len(rows),
+            "deployment.pcb_name": pcb_name,
+            "deployment.version": deployment.model_version,
+        },
+    ) as span:
+        outcomes: list[NotifyOutcome] = []
+        async with httpx.AsyncClient(
+            transport=http_transport, timeout=timeout
+        ) as client:
+            for edge in rows:
+                model_name, version = _resolve_target(
+                    edge,
+                    deployment_model_name=pcb_name,
+                    deployment_version=deployment.model_version,
                 )
-    return outcomes
+                body = {"model_name": model_name, "version": version}
+                outcome = await _notify_one(client, edge, body)
+                outcomes.append(outcome)
+                if not outcome.ok:
+                    logger.warning(
+                        "edge notify failed: edge=%s attempts=%d error=%s",
+                        outcome.name,
+                        outcome.attempts,
+                        outcome.error,
+                    )
+        span.set_attribute(
+            "edge.ok_count", sum(1 for o in outcomes if o.ok)
+        )
+        span.set_attribute(
+            "edge.fail_count", sum(1 for o in outcomes if not o.ok)
+        )
+        return outcomes

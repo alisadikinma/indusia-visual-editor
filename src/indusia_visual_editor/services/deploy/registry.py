@@ -17,6 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Literal
 
+from indusia_visual_editor.utils.otel_config import get_tracer
+
+_tracer = get_tracer(__name__)
+
 
 # Subprocess factory signature: (*argv, cwd, stdout, stderr) -> Process-like
 _SubprocessFactory = Callable[..., Awaitable[Any]]
@@ -112,37 +116,47 @@ async def push_model(
     full provenance regardless of outcome.
     """
 
-    steps: list[tuple[Stage, tuple[str, ...]]] = [
-        ("add", (ais_binary, "model", "add", pcb_name, "--all")),
-        ("commit", (ais_binary, "model", "commit", "-m", commit_message)),
-        ("push", (ais_binary, "model", "push")),
-    ]
+    with _tracer.start_as_current_span(
+        "registry.push_model",
+        attributes={
+            "registry.pcb_name": pcb_name,
+            "registry.binary": ais_binary,
+            "registry.timeout_secs": timeout,
+        },
+    ) as span:
+        steps: list[tuple[Stage, tuple[str, ...]]] = [
+            ("add", (ais_binary, "model", "add", pcb_name, "--all")),
+            ("commit", (ais_binary, "model", "commit", "-m", commit_message)),
+            ("push", (ais_binary, "model", "push")),
+        ]
 
-    for stage, argv in steps:
-        rc, stdout, stderr, timed_out = await _run_step(
-            *argv, cwd=registry_root, timeout=timeout
+        for stage, argv in steps:
+            rc, stdout, stderr, timed_out = await _run_step(
+                *argv, cwd=registry_root, timeout=timeout
+            )
+            if timed_out:
+                span.set_attribute("registry.failed_stage", "timeout")
+                return PushResult(
+                    ok=False,
+                    stage="timeout",
+                    returncode=-1,
+                    stdout=stdout,
+                    stderr=stderr or f"step '{stage}' exceeded {timeout}s",
+                )
+            if rc != 0:
+                span.set_attribute("registry.failed_stage", stage)
+                return PushResult(
+                    ok=False,
+                    stage=stage,
+                    returncode=rc,
+                    stdout=stdout,
+                    stderr=stderr,
+                )
+
+        return PushResult(
+            ok=True,
+            stage="done",
+            returncode=0,
+            stdout="",
+            stderr="",
         )
-        if timed_out:
-            return PushResult(
-                ok=False,
-                stage="timeout",
-                returncode=-1,
-                stdout=stdout,
-                stderr=stderr or f"step '{stage}' exceeded {timeout}s",
-            )
-        if rc != 0:
-            return PushResult(
-                ok=False,
-                stage=stage,
-                returncode=rc,
-                stdout=stdout,
-                stderr=stderr,
-            )
-
-    return PushResult(
-        ok=True,
-        stage="done",
-        returncode=0,
-        stdout="",
-        stderr="",
-    )

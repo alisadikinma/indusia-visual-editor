@@ -26,6 +26,9 @@ from indusia_visual_editor.services.llm.exceptions import (
     LlmResponseError,
     LlmTimeoutError,
 )
+from indusia_visual_editor.utils.otel_config import get_tracer
+
+_tracer = get_tracer(__name__)
 
 
 def _encode_image(img: bytes | str) -> str:
@@ -83,20 +86,28 @@ class OllamaClient:
         format: dict[str, Any] | str | None = None,
         options: dict[str, Any] | None = None,
     ) -> str:
-        body: dict[str, Any] = {
-            "model": model,
-            "prompt": prompt,
-            "stream": False,
-        }
-        if images:
-            body["images"] = [_encode_image(i) for i in images]
-        if format is not None:
-            body["format"] = format
-        if options:
-            body["options"] = options
+        with _tracer.start_as_current_span(
+            "ollama.generate",
+            attributes={
+                "llm.model": model,
+                "llm.has_images": bool(images),
+                "llm.structured_output": format is not None,
+            },
+        ):
+            body: dict[str, Any] = {
+                "model": model,
+                "prompt": prompt,
+                "stream": False,
+            }
+            if images:
+                body["images"] = [_encode_image(i) for i in images]
+            if format is not None:
+                body["format"] = format
+            if options:
+                body["options"] = options
 
-        data = await self._post("/api/generate", body)
-        return str(data.get("response", ""))
+            data = await self._post("/api/generate", body)
+            return str(data.get("response", ""))
 
     async def chat(
         self,
@@ -106,19 +117,26 @@ class OllamaClient:
         format: dict[str, Any] | str | None = None,
         options: dict[str, Any] | None = None,
     ) -> str:
-        body: dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "stream": False,
-        }
-        if format is not None:
-            body["format"] = format
-        if options:
-            body["options"] = options
+        with _tracer.start_as_current_span(
+            "ollama.chat",
+            attributes={
+                "llm.model": model,
+                "llm.message_count": len(messages),
+            },
+        ):
+            body: dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "stream": False,
+            }
+            if format is not None:
+                body["format"] = format
+            if options:
+                body["options"] = options
 
-        data = await self._post("/api/chat", body)
-        message = data.get("message") or {}
-        return str(message.get("content", ""))
+            data = await self._post("/api/chat", body)
+            message = data.get("message") or {}
+            return str(message.get("content", ""))
 
     async def stream_chat(
         self,
@@ -146,6 +164,13 @@ class OllamaClient:
         if options:
             body["options"] = options
 
+        span = _tracer.start_span(
+            "ollama.stream_chat",
+            attributes={
+                "llm.model": model,
+                "llm.message_count": len(messages),
+            },
+        )
         try:
             async with self._http.stream("POST", "/api/chat", json=body) as r:
                 if not (200 <= r.status_code < 300):
@@ -169,9 +194,13 @@ class OllamaClient:
                     if event.get("done") is True:
                         return
         except httpx.TimeoutException as exc:
+            span.record_exception(exc)
             raise LlmTimeoutError(f"Ollama stream timed out: {exc}") from exc
         except (httpx.ConnectError, httpx.TransportError) as exc:
+            span.record_exception(exc)
             raise LlmConnectionError(f"Could not reach Ollama stream: {exc}") from exc
+        finally:
+            span.end()
 
     async def _post(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
         try:
