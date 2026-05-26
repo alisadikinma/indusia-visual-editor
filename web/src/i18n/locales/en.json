@@ -1,0 +1,41 @@
+{
+  "app": {
+    "name": "Indusia Visual Editor",
+    "tagline": "PCB inspection, from BOM to production in hours"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "continue": "Continue",
+    "back": "Back",
+    "loading": "Loading…",
+    "search": "Search",
+    "language": "Language"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "projects": "Projects",
+    "wizard": "New project",
+    "labeling": "Labeling",
+    "gate1": "Gate 1 — start training",
+    "training": "Training",
+    "eval": "Evaluation",
+    "gate2": "Gate 2 — promote to production",
+    "logout": "Log out"
+  },
+  "auth": {
+    "loginTitle": "Sign in",
+    "signupTitle": "Create account",
+    "email": "Email",
+    "password": "Password",
+    "submitLogin": "Sign in",
+    "submitSignup": "Create account",
+    "needAccount": "Need an account?",
+    "haveAccount": "Already have an account?"
+  },
+  "engineer": {
+    "toggle": "Engineer mode",
+    "on": "Engineer mode ON",
+    "off": "Engineer mode OFF"
+  }
+}

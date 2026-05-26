@@ -1,74 +1,51 @@
-/// <reference types="vite/client" />
-import axios, { type AxiosInstance, type AxiosRequestConfig } from "axios";
+import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
+import { useAuthStore } from '@/stores/auth'
 
-const baseURL = import.meta.env.VITE_API_URL ?? "http://localhost:8002";
-const TOKEN_KEY = "ive.access_token";
-
-export const api: AxiosInstance = axios.create({
-  baseURL,
-  timeout: 15000,
-  headers: { "Content-Type": "application/json" },
-});
-
-export type ApiEnvelope<T> = {
-  status: boolean;
-  message: string;
-  data: T;
-};
-
-// Phase 13.5 — attach the bearer access token from localStorage to every
-// outbound request. We avoid importing the Pinia store here so the api
-// layer stays consumable from non-Vue contexts (tests, workers).
-api.interceptors.request.use((config) => {
-  const token = typeof localStorage !== "undefined" ? localStorage.getItem(TOKEN_KEY) : null;
-  if (token) {
-    config.headers.set?.("Authorization", `Bearer ${token}`);
-    // Older versions of axios use a plain object — set both ways defensively.
-    (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// Phase 13.5 — on 401, try the refresh endpoint exactly once and replay
-// the original request. If refresh also 401s, give up — the auth store /
-// router guard will redirect to /login.
-let refreshing: Promise<string | null> | null = null;
-
-async function attemptRefresh(): Promise<string | null> {
-  try {
-    const response = await axios.post<ApiEnvelope<{ access_token: string }>>(
-      `${baseURL}/api/auth/refresh`,
-      {},
-      { withCredentials: true },
-    );
-    const token = response.data.data.access_token;
-    if (typeof localStorage !== "undefined") localStorage.setItem(TOKEN_KEY, token);
-    return token;
-  } catch {
-    if (typeof localStorage !== "undefined") localStorage.removeItem(TOKEN_KEY);
-    return null;
-  }
+interface RetriableConfig extends InternalAxiosRequestConfig {
+  _retried?: boolean
 }
 
-api.interceptors.response.use(
+export const apiClient: AxiosInstance = axios.create({
+  baseURL: '/api',
+  withCredentials: true,
+  timeout: 30_000,
+})
+
+apiClient.interceptors.request.use((config) => {
+  const auth = useAuthStore()
+  if (auth.accessToken && config.headers) {
+    config.headers.Authorization = `Bearer ${auth.accessToken}`
+  }
+  return config
+})
+
+apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const original = error.config as (AxiosRequestConfig & { _retry?: boolean }) | undefined;
-    const status = error.response?.status;
-    if (status !== 401 || !original || original._retry) {
-      return Promise.reject(error);
+    const original = error.config as RetriableConfig | undefined
+    if (
+      error.response?.status === 401 &&
+      original &&
+      !original._retried &&
+      !original.url?.includes('/auth/')
+    ) {
+      original._retried = true
+      try {
+        const refresh = await axios.post('/api/auth/refresh', null, { withCredentials: true })
+        const token = refresh.data?.data?.access_token
+        if (token) {
+          const auth = useAuthStore()
+          auth.setToken(token)
+          if (original.headers) {
+            original.headers.Authorization = `Bearer ${token}`
+          }
+          return apiClient(original)
+        }
+      } catch {
+        const auth = useAuthStore()
+        auth.logout()
+      }
     }
-    // Don't loop on the refresh call itself.
-    if (typeof original.url === "string" && original.url.includes("/api/auth/")) {
-      return Promise.reject(error);
-    }
-    original._retry = true;
-    refreshing ??= attemptRefresh();
-    const token = await refreshing;
-    refreshing = null;
-    if (!token) return Promise.reject(error);
-    original.headers ??= {};
-    (original.headers as Record<string, string>).Authorization = `Bearer ${token}`;
-    return api.request(original);
+    return Promise.reject(error)
   },
-);
+)

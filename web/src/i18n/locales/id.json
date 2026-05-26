@@ -1,0 +1,41 @@
+{
+  "app": {
+    "name": "Indusia Visual Editor",
+    "tagline": "Inspeksi PCB dari BOM ke produksi dalam hitungan jam"
+  },
+  "common": {
+    "save": "Simpan",
+    "cancel": "Batal",
+    "continue": "Lanjut",
+    "back": "Kembali",
+    "loading": "Memuat…",
+    "search": "Cari",
+    "language": "Bahasa"
+  },
+  "nav": {
+    "dashboard": "Dasbor",
+    "projects": "Proyek",
+    "wizard": "Proyek baru",
+    "labeling": "Pelabelan",
+    "gate1": "Gate 1 — mulai training",
+    "training": "Training",
+    "eval": "Evaluasi",
+    "gate2": "Gate 2 — promosi ke produksi",
+    "logout": "Keluar"
+  },
+  "auth": {
+    "loginTitle": "Masuk",
+    "signupTitle": "Buat akun",
+    "email": "Email",
+    "password": "Kata sandi",
+    "submitLogin": "Masuk",
+    "submitSignup": "Buat akun",
+    "needAccount": "Belum punya akun?",
+    "haveAccount": "Sudah punya akun?"
+  },
+  "engineer": {
+    "toggle": "Mode engineer",
+    "on": "Mode engineer ON",
+    "off": "Mode engineer OFF"
+  }
+}
