@@ -36,15 +36,20 @@ logger = get_logger(__name__)
 
 
 # Fuzzy column synonyms — substring match, case-insensitive.
+# NOTE: `comp` was dropped because it false-positives on SAP exports where
+# column "Component" is the SAP material code, not a placement designator —
+# the actual designators live in column "SubItem".
 COLUMN_SYNONYMS: dict[str, tuple[str, ...]] = {
-    "designator": ("designator", "reference", "ref", "comp"),
+    "designator": ("designator", "reference", "ref", "subitem"),
     "value": ("value", "val"),
     "package": ("package", "footprint", "fp"),
     "qty": ("qty", "quantity", "qnty"),
 }
 
-# Header detection scans this many leading rows.
-HEADER_SCAN_WINDOW = 5
+# Header detection scans this many leading rows. SAP ZLMM_BOM_REPORT exports
+# put 10 lines of preamble (report name, plant, FG material) before the actual
+# table header, so the window must clear that.
+HEADER_SCAN_WINDOW = 20
 
 # Multi-designator expansion: split on `,` or `;` (with optional whitespace).
 DESIGNATOR_SPLIT = re.compile(r"[,;]\s*")
@@ -179,17 +184,40 @@ def _load_xlsx(file_bytes: bytes) -> list[list[object]]:
     return rows
 
 
+def _decode_text(file_bytes: bytes) -> str:
+    """Decode BOM file bytes with BOM-aware encoding detection.
+
+    NOVANTA SAP exports the BOM as a UTF-16 LE TSV file labelled .xls, which
+    decoded as utf-8 produces NUL-laden garbage that the csv reader chokes on.
+    Detect the BOM and route to the right codec; fall back to utf-8-sig for
+    typical CAD-tool exports.
+    """
+    if file_bytes.startswith(b"\xff\xfe"):
+        return file_bytes.decode("utf-16-le", errors="replace").lstrip("﻿")
+    if file_bytes.startswith(b"\xfe\xff"):
+        return file_bytes.decode("utf-16-be", errors="replace").lstrip("﻿")
+    return file_bytes.decode("utf-8-sig", errors="replace")
+
+
+def _pick_delimiter(text: str) -> str:
+    """Pick the most-frequent delimiter from a candidate set, scanning the
+    first ~50 lines. csv.Sniffer fails on SAP exports whose preamble has many
+    empty lines + variable tab counts; falling back to its default `excel`
+    dialect mis-routes TSV through a comma reader. Frequency counting is
+    crude but reliable across the formats we actually see: CAD-tool CSVs,
+    Excel ';' exports, and SAP UTF-16 TSVs."""
+    sample = "\n".join(text.splitlines()[:50])
+    counts = {d: sample.count(d) for d in (",", ";", "\t", "|")}
+    best = max(counts.items(), key=lambda kv: kv[1])
+    return best[0] if best[1] > 0 else ","
+
+
 def _load_csv(file_bytes: bytes) -> list[list[object]]:
     if not file_bytes:
         raise BomParseError("File BOM kosong.")
-    text = file_bytes.decode("utf-8-sig", errors="replace")
-    # Sniffer for delimiter — most BOMs are comma; some Excel exports use ;
-    sample = text[:1024]
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
-    except csv.Error:
-        dialect = csv.excel
-    reader = csv.reader(io.StringIO(text), dialect=dialect)
+    text = _decode_text(file_bytes)
+    delimiter = _pick_delimiter(text)
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
     try:
         return [list(row) for row in reader]
     except csv.Error as exc:

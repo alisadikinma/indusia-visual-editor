@@ -152,3 +152,72 @@ def test_malformed_csv_raises_bom_parse_error_not_csv_error():
     with pytest.raises(BomParseError) as exc_info:
         parse_bom(malformed, "broken.csv")
     assert ".csv" in str(exc_info.value)
+
+
+def test_parses_sap_utf16_le_tsv_with_subitem_designators():
+    """Regression: NOVANTA exports SAP ZLMM_BOM_REPORT as UTF-16 LE tab-
+    separated text with a .xls extension. The real placement designators
+    live in column 'SubItem' (multi-value, e.g. 'C63,C64,C65,C66'), behind
+    10 lines of report preamble. Parser must:
+      1. detect FF FE BOM and decode utf-16-le (not utf-8-sig garbage)
+      2. scan past the preamble to find the header at row 11
+      3. map 'SubItem' → designator (not 'Component', which is the SAP
+         material code)
+      4. expand multi-designators
+    """
+    rows = [
+        ["12.03.2026", "", "Dynamic List Display"],
+        [""],
+        ["BOM MultiLevel Report"],
+        [""],
+        ["Report Name :", "", "ZLMM_BOM_REPORT"],
+        ["Plant/Usage/Alt. :", "", "SGMK/1/01"],
+        ["FG Material :", "", "NV80-020418-0300"],
+        ["Description :", "", "PCB,RF,Oscillator"],
+        ["ECM No:"],
+        ["BOM Eff.Date:", "", "12.03.2026"],
+        [""],
+        # row 11: real header
+        ["", "FG Part No", "Level", "", "Item", "Component",
+         "Component Description", "QTY", "UOM", "Sort String",
+         "SubItem", "MPN"],
+        [""],
+        # row 13+: data — designators in SubItem column, multi-value supported
+        ["", "NV80-020418-0300", "2", "", "0010", "NV761-14000-0301",
+         "Wire,Teflon,Red,14AWG", "0.6", "EA", "FAT",
+         "JP1,JP2", "10304190"],
+        ["", "NV80-020418-0300", "2", "", "0020", "NV505-00062-0200",
+         "Cap,Elec,330uF,63v,Rad", "4", "EA", "PCA",
+         "C63,C64,C65,C66", "10231788"],
+        ["", "NV80-020418-0300", "2", "", "0030", "NV574-00027-0100",
+         "Res,13,3w,5%,Thru", "2", "EA", "MIS",
+         "R11,R6", "10072590"],
+    ]
+    body = "\r\n".join("\t".join(r) for r in rows)
+    payload = b"\xff\xfe" + body.encode("utf-16-le")
+
+    items = parse_bom(payload, "BOM NV80-020418-0300.xls")
+    designators = [i.designator for i in items]
+    # JP1,JP2 + C63,C64,C65,C66 + R11,R6 = 8 expanded items
+    assert designators == ["JP1", "JP2", "C63", "C64", "C65", "C66", "R11", "R6"]
+    # Component (SAP material code) must NOT be picked up as designator
+    assert "NV761-14000-0301" not in designators
+    assert "NV505-00062-0200" not in designators
+
+
+def test_does_not_misclassify_component_header_as_designator():
+    """Regression: with the old `comp` substring synonym, a BOM whose only
+    designator-ish column was named 'Component' (SAP material code) would
+    be picked up as the designator column and produce garbage rows. After
+    dropping `comp` from synonyms, this BOM must be REJECTED — there is no
+    real placement designator column."""
+    payload = _csv_bytes(
+        [
+            ["Component", "Component Description", "Qty"],
+            ["NV505-00062-0200", "Cap,Elec,330uF", "4"],
+            ["NV574-00027-0100", "Res,13,3w", "2"],
+        ]
+    )
+    with pytest.raises(BomParseError) as exc_info:
+        parse_bom(payload, "no-designator.csv")
+    assert "designator" in str(exc_info.value).lower() or "tidak ditemukan" in str(exc_info.value).lower()
