@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from indusia_visual_editor.config import get_config
 from indusia_visual_editor.db.models import Asset, AssetKind, BomItem
-from indusia_visual_editor.services.asset.bom_parser import parse_bom
+from indusia_visual_editor.services.asset.bom_parser import BomItemDraft, parse_bom
 
 
 class AssetTooLargeError(Exception):
@@ -76,8 +76,14 @@ async def save_asset(
 
     sha256 = hashlib.sha256(file_bytes).hexdigest()
 
-    # Dedup check — same bytes already uploaded? Skip both disk write
-    # and bom_items mutation (identical bytes → identical parsed result).
+    # Dedup check — same bytes already uploaded?
+    # For non-BOM assets, skip disk write and DB churn (idempotent).
+    # For BOM, we ALWAYS re-parse and refresh bom_items because parser
+    # logic can change between uploads (taxonomy edits, bug fixes, new
+    # column synonyms) — the original 2026-05 dedup assumption that
+    # "identical bytes -> identical parsed result" is false the moment
+    # parser code evolves. Disk write is still skipped (file already
+    # present, identical bytes).
     existing = (
         await session.execute(
             select(Asset).where(
@@ -86,6 +92,8 @@ async def save_asset(
         )
     ).scalar_one_or_none()
     if existing is not None:
+        if kind == AssetKind.BOM and bom_drafts is not None:
+            await _replace_bom_items(session, project_id, bom_drafts)
         return existing, False
 
     ext = _safe_extension(filename, mime)
@@ -109,30 +117,38 @@ async def save_asset(
     await session.refresh(asset)
 
     if bom_drafts is not None:
-        # REPLACE strategy — drop all previous bom_items for this project,
-        # then bulk-insert the new drafts. Same DB transaction as the asset
-        # insert so either both land or neither does.
-        await session.execute(
-            delete(BomItem).where(BomItem.project_id == project_id)
-        )
-        session.add_all(
-            [
-                BomItem(
-                    project_id=project_id,
-                    designator=d.designator,
-                    value=d.value,
-                    package=d.package,
-                    qty=d.qty,
-                    extra=d.extra,
-                    mi_likely=d.mi_likely,
-                    component_type=d.component_type,
-                )
-                for d in bom_drafts
-            ]
-        )
-        await session.flush()
+        await _replace_bom_items(session, project_id, bom_drafts)
 
     return asset, True
+
+
+async def _replace_bom_items(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    drafts: list[BomItemDraft],
+) -> None:
+    """REPLACE strategy: drop all previous bom_items for this project,
+    then bulk-insert the new drafts. Runs in the caller's transaction so
+    either both land or neither does."""
+    await session.execute(
+        delete(BomItem).where(BomItem.project_id == project_id)
+    )
+    session.add_all(
+        [
+            BomItem(
+                project_id=project_id,
+                designator=d.designator,
+                value=d.value,
+                package=d.package,
+                qty=d.qty,
+                extra=d.extra,
+                mi_likely=d.mi_likely,
+                component_type=d.component_type,
+            )
+            for d in drafts
+        ]
+    )
+    await session.flush()
 
 
 async def list_assets(session: AsyncSession, project_id: uuid.UUID) -> list[Asset]:

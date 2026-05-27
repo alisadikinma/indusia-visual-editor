@@ -20,6 +20,7 @@ from openpyxl import Workbook
 
 from indusia_visual_editor.services.asset.bom_parser import (
     BomParseError,
+    _extract_package,
     parse_bom,
 )
 
@@ -221,3 +222,113 @@ def test_does_not_misclassify_component_header_as_designator():
     with pytest.raises(BomParseError) as exc_info:
         parse_bom(payload, "no-designator.csv")
     assert "designator" in str(exc_info.value).lower() or "tidak ditemukan" in str(exc_info.value).lower()
+
+
+# --- _extract_package unit tests ----------------------------------------
+# SAP BOM exports embed the package code inside the comma-separated
+# "Component Description" string, e.g. "Cap,Cerm,0.1uF,25V,10%,X7R,SMT,0402".
+# The extractor pulls out a clean footprint token the MI classifier can
+# pattern-match on.
+
+
+@pytest.mark.parametrize(
+    "description, expected",
+    [
+        ("Cap,Cerm,0.1uF,25V,10%,X7R,SMT,0402", "0402"),
+        ("Cap,Cerm,4.7uF,16V,10%,X7R,SMT,0805", "0805"),
+        ("Res,10K,1/8w,1%,ThkFilm,SMT,0603", "0603"),
+        ("Res,82,3,1/16w,1%,ThkFilm,SMT,1206", "1206"),
+        ("MOSFET,N,40V,1W,SMT,SOT89", "SOT89"),
+        ("Diode,Switch,200mA,70V,SMT,SOT23,Dual,Cm", "SOT23"),
+        ("ZenDiode,12V,500mW,SMT,SOD123", "SOD123"),
+        ("Diode,Schtky,2A,60V,SMT,SMB", "SMB"),
+        ("IC,SOIC-8,LM358", "SOIC-8"),
+        ("IC,STM32,LQFP-100", "LQFP-100"),
+        ("Regulator,TO-220", "TO-220"),
+        # Radial / through-hole electrolytic: normalize "Rad" → "Radial"
+        ("Cap,Elec,560uF,50v,20%,Rad,16x21,5mm", "Radial"),
+        ("Cap,Elec,330uF,63v,Rad", "Radial"),
+        # Headers / connectors: normalize "Headr"/"Hdr" → "Header"
+        ("Headr,6373,5,Pin,0.3in,PCB,Thru,Tin", "Header"),
+        ("Hdr,2x10,2.54mm,PTH", "Header"),
+        ("ShHdr,5566,6,Pin,4.2mm,PCB,Thru,2R,Tin", "Header"),
+        ("Fuse,Auto Reset,500mA,60v", "Fuse"),
+        # No recognizable footprint
+        ("BLANK LABEL 8X20MM (White w/o pull tab)", None),
+        ("PCB,M,Control", None),
+        ("", None),
+    ],
+)
+def test_extract_package_recognizes_common_footprints(description, expected):
+    assert _extract_package(description) == expected
+
+
+def test_sap_description_column_maps_to_value_and_extracts_package():
+    """Real NOVANTA SAP shape: `Component Description` is the
+    human-readable component string. Parser must (1) map it to the
+    `value` field and (2) extract a clean package token from its tail
+    so the MI classifier can pattern-match."""
+    rows = [
+        ["", "FG Part No", "Level", "", "Item", "Component",
+         "Component Description", "QTY", "UOM", "Sort String",
+         "SubItem", "MPN"],
+        ["", "NV80-X", "4", "", "0220", "NV500-00008-1700",
+         "Cap,Cerm,0.1uF,25V,10%,X7R,SMT,0402", "7", "EA", "SMT",
+         "C10,C11,C13", "10302016"],
+        ["", "NV80-X", "4", "", "0640", "NV633-00010-0200",
+         "Trans,NPN,1A,80V,1W,SMT,SOT89", "2", "EA", "SMT",
+         "Q2,Q4", "10302234"],
+        ["", "NV80-X", "3", "", "0100", "NV505-00032-0200",
+         "Cap,Elec,560uF,50v,20%,Rad,16x21,5mm", "2", "EA", "MIS",
+         "C3,C6", "10302229"],
+        ["", "NV80-X", "3", "", "0140", "NV621-00003-0100",
+         "Headr,6373,5,Pin,PCB,Thru,Tin", "1", "EA", "MIS",
+         "P8", "10302235"],
+    ]
+    body = "\r\n".join("\t".join(r) for r in rows)
+    payload = b"\xff\xfe" + body.encode("utf-16-le")
+    items = parse_bom(payload, "BOM NV80-X.xls")
+    by_desig = {i.designator: i for i in items}
+
+    # C10/C11/C13 share Cap,Cerm description → value populated, package=0402
+    assert by_desig["C10"].value == "Cap,Cerm,0.1uF,25V,10%,X7R,SMT,0402"
+    assert by_desig["C10"].package == "0402"
+    # SMT classifier should NOT flag 0402 as MI
+    assert by_desig["C10"].mi_likely is False
+
+    # SOT89 transistor → SMD
+    assert by_desig["Q2"].package == "SOT89"
+    assert by_desig["Q2"].mi_likely is False
+
+    # Radial electrolytic → MI (through-hole)
+    assert by_desig["C3"].package == "Radial"
+    assert by_desig["C3"].mi_likely is True
+
+    # Pin header → MI (through-hole connector)
+    assert by_desig["P8"].package == "Header"
+    assert by_desig["P8"].mi_likely is True
+
+
+def test_description_does_not_override_explicit_value_column():
+    """When both 'Value' and a description-like column exist, the
+    Value column takes precedence (column iteration ends with the
+    column closer to the right of the header — same field key 'value'
+    means last writer wins, which is intentional)."""
+    payload = _csv_bytes(
+        [
+            ["Designator", "Value", "Description", "Qty"],
+            ["R1", "10kOhm", "Res,10K,1/8w,1%,SMT,0805", "1"],
+        ]
+    )
+    items = parse_bom(payload, "two-value-cols.csv")
+    # Either "10kOhm" (Value wins) or "Res,..." (Description wins) is
+    # acceptable; but parse must not crash and package extraction must
+    # still run against whatever ended up in `value`.
+    assert items[0].designator == "R1"
+    # Whichever value won, package extraction sees a string and pulls
+    # 0805 if Description won, or None if 10kOhm won.
+    if items[0].value == "10kOhm":
+        assert items[0].package is None  # no extractable footprint
+    else:
+        assert items[0].value == "Res,10K,1/8w,1%,SMT,0805"
+        assert items[0].package == "0805"

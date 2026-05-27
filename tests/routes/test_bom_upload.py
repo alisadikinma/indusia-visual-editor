@@ -6,7 +6,10 @@ When a user uploads a BOM file via POST /api/projects/{id}/assets?kind=bom:
     bom_items for the project and INSERT the new drafts.
   - On parse failure: BomParseError → 422 envelope, no Asset row, no
     bom_items, no file on disk.
-  - Re-upload of the SAME bytes (sha256 dedup hit) is a no-op for bom_items.
+  - Re-upload of the SAME bytes (sha256 dedup hit) keeps the existing
+    Asset row but ALWAYS re-runs the parser and refreshes bom_items,
+    because parser logic (taxonomy, synonyms, extractors) can evolve
+    between uploads.
   - Re-upload of DIFFERENT bytes REPLACES the previous bom_items
     (per Phase 2.2 user decision: latest BOM wins).
 """
@@ -280,3 +283,59 @@ async def test_reupload_identical_bom_dedups_no_change(
     assert r2.status_code == 200, "dedup hit returns 200"
     assert r2.json()["data"]["id"] == first_asset_id
     assert await _count_bom_items(query_session, project_id) == 1
+
+
+@pytest.mark.asyncio
+async def test_reupload_identical_bom_refreshes_after_parser_change(
+    client: AsyncClient, query_session: AsyncSession, monkeypatch
+):
+    """Regression: parser logic can evolve between uploads. Re-uploading
+    the SAME bytes must re-run the (possibly improved) parser and refresh
+    bom_items, even though the asset is dedup-hit on sha256."""
+    project_id = await _create_project(client, "dedup-refresh")
+    payload = _csv_bytes(
+        [
+            ["Designator", "Value"],
+            ["R1", "Res,10k,1%,SMT,0805"],
+        ]
+    )
+
+    r1 = await client.post(
+        f"/api/projects/{project_id}/assets",
+        params={"kind": "bom"},
+        files={"file": ("a.csv", io.BytesIO(payload), "text/csv")},
+    )
+    assert r1.status_code == 201
+
+    items_before = (
+        await query_session.execute(select(BomItem).where(BomItem.project_id == project_id))
+    ).scalars().all()
+    assert len(items_before) == 1
+    original_id = items_before[0].id
+    # The parser already populates package via _extract_package for SMT,0805
+    assert items_before[0].package == "0805"
+
+    # Simulate a parser improvement: monkeypatch parse_bom to return a
+    # different package for the same input bytes.
+    from indusia_visual_editor.services.asset import image_store as image_store_mod
+    from indusia_visual_editor.services.asset.bom_parser import BomItemDraft
+
+    def fake_parse(file_bytes, filename):
+        return [BomItemDraft(designator="R1", value="overridden", package="9999")]
+
+    monkeypatch.setattr(image_store_mod, "parse_bom", fake_parse)
+
+    r2 = await client.post(
+        f"/api/projects/{project_id}/assets",
+        params={"kind": "bom"},
+        files={"file": ("b.csv", io.BytesIO(payload), "text/csv")},
+    )
+    assert r2.status_code == 200, "dedup hit returns 200"
+
+    items_after = (
+        await query_session.execute(select(BomItem).where(BomItem.project_id == project_id))
+    ).scalars().all()
+    assert len(items_after) == 1
+    assert items_after[0].id != original_id, "bom_items row should be replaced, not preserved"
+    assert items_after[0].package == "9999", "new parser output must be persisted"
+    assert items_after[0].value == "overridden"

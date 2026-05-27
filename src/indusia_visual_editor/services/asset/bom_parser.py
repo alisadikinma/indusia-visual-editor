@@ -41,10 +41,93 @@ logger = get_logger(__name__)
 # the actual designators live in column "SubItem".
 COLUMN_SYNONYMS: dict[str, tuple[str, ...]] = {
     "designator": ("designator", "reference", "ref", "subitem"),
-    "value": ("value", "val"),
+    # "description" catches SAP ZLMM_BOM_REPORT's "Component Description" column,
+    # which carries the value+package info as one comma-separated string
+    # (e.g. "Cap,Cerm,0.1uF,25V,10%,X7R,SMT,0402"). Package is recovered by
+    # _extract_package() below.
+    "value": ("value", "val", "description"),
     "package": ("package", "footprint", "fp"),
     "qty": ("qty", "quantity", "qnty"),
 }
+
+# Named footprint codes embedded in SAP descriptions. Match longest tail first
+# so "SOIC-8" wins over a bare 4-digit grab. Patterns are intentionally
+# permissive (optional dash, optional trailing letter or sub-revision) because
+# real exports use both "SOT-23" and "SOT23".
+_NAMED_FOOTPRINT = re.compile(
+    r"\b("
+    r"SOT-?\d+[A-Z]?(?:-\d+)?"
+    r"|SOD-?\d+"
+    r"|SOIC-?\d+"
+    r"|SSOP-?\d+"
+    r"|TSSOP-?\d+"
+    r"|QFN-?\d+"
+    r"|LQFP-?\d+"
+    r"|TQFP-?\d+"
+    r"|PQFP-?\d+"
+    r"|QFP-?\d+"
+    r"|DFN-?\d+"
+    r"|MLF-?\d+"
+    r"|BGA-?\d+"
+    r"|LGA-?\d+"
+    r"|WLCSP-?\d+"
+    r"|SM[ABC]"
+    r"|TO-?\d+[A-Z]?"
+    r"|D2PAK|DDPAK|DPAK"
+    r"|SDIP-?\d+"
+    r"|DIP-?\d+"
+    r")\b",
+    re.IGNORECASE,
+)
+
+# 4-digit SMD chip footprints (resistors, caps).
+_SMD_CHIP = re.compile(r"\b(0201|0402|0603|0805|1206|1210|1812|2010|2512)\b")
+
+# Form-factor tokens that don't carry a numeric footprint code but DO
+# classify into MI/SMT cleanly via taxonomy.yaml.
+_FORM_FACTOR = re.compile(
+    r"\b(Radial|Rad|Axial|Header|Headr|Hdr|ShHdr|Fuse)\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_package(description: str) -> str | None:
+    """Pull a clean footprint token out of a SAP-style description.
+
+    Examples:
+        "Cap,Cerm,0.1uF,25V,10%,X7R,SMT,0402" -> "0402"
+        "MOSFET,N,40V,1W,SMT,SOT89"            -> "SOT89"
+        "Cap,Elec,560uF,50v,20%,Rad,16x21,5mm" -> "Radial"
+        "Headr,6373,5,Pin,PCB,Thru,Tin"        -> "Header"
+
+    Returns None when the description has no recognizable footprint.
+    Output is normalized so component_taxonomy.yaml regexes match
+    (uppercase for named codes, canonical "Radial"/"Axial"/"Header"
+    for form-factors).
+    """
+    if not description:
+        return None
+
+    named = list(_NAMED_FOOTPRINT.finditer(description))
+    if named:
+        return named[-1].group(0).upper()
+
+    chip = list(_SMD_CHIP.finditer(description))
+    if chip:
+        return chip[-1].group(0)
+
+    ff = _FORM_FACTOR.search(description)
+    if ff:
+        token = ff.group(0).lower()
+        if token.startswith("rad"):
+            return "Radial"
+        if token.startswith("ax"):
+            return "Axial"
+        if token == "fuse":
+            return "Fuse"
+        return "Header"  # headr, header, hdr, shhdr
+
+    return None
 
 # Header detection scans this many leading rows. SAP ZLMM_BOM_REPORT exports
 # put 10 lines of preamble (report name, plant, FG material) before the actual
@@ -145,6 +228,14 @@ def _row_to_drafts(
     raw_designator = fields.get("designator")
     if not raw_designator:
         return []
+
+    # SAP exports carry the package code inside the description (no
+    # dedicated Package column). When the package field is empty but
+    # value looks like a comma-separated description, mine it.
+    if not fields.get("package") and fields.get("value"):
+        extracted = _extract_package(str(fields["value"]))
+        if extracted:
+            fields["package"] = extracted
 
     designators = [d.strip() for d in DESIGNATOR_SPLIT.split(str(raw_designator)) if d.strip()]
     if not designators:
