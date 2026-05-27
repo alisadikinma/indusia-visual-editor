@@ -1,202 +1,259 @@
 # Indusia Visual Editor
 
-> Factory-user-driven PCB inspection platform. Take a brand-new PCB from photo to production inspection in **hours, not days** — without writing a single line of YAML or touching the CLI.
+> **From PCB photo to production inspection in hours, not days.** Zero YAML, zero CLI, zero computer-vision expertise required from the factory user.
+
+<p align="left">
+  <a href="docs/plans/2026-05-22-visual-editor-mvp.md"><img src="https://img.shields.io/badge/backend-M0--M14_shipped-047857?style=flat-square" alt="backend status" /></a>
+  <a href="docs/plans/2026-05-27-vue-fe-migration.md"><img src="https://img.shields.io/badge/frontend-F0--F6_shipped-047857?style=flat-square" alt="frontend status" /></a>
+  <img src="https://img.shields.io/badge/tests-395_backend_%2B_36_unit_%2B_8_e2e_passing-047857?style=flat-square" alt="tests passing" />
+  <img src="https://img.shields.io/badge/license-proprietary-475569?style=flat-square" alt="license" />
+</p>
+
+![Dashboard](docs/design/screens/02-dashboard.png)
 
 ---
 
-## What this is
+## The problem
 
-The MI division of a PCB factory hand-inserts through-hole components (electrolytic caps, connectors, headers, DIP ICs, transformers) and runs them through wave-solder. Today **no inspection automation covers this stage** — SMT lines have AOI machines, MI lines don't. Defects (lifted pins, polarity flips, misalignment, missing components, wrong values, solder shorts) are caught by tired operators visually checking each board.
+PCB factories run two lines: **SMT** (surface mount, fully automated, AOI machines catch defects) and **MI** (manual insertion — through-hole components like electrolytic caps, connectors, DIP ICs, headers — soldered through a wave bath). Today **no inspection automation exists for MI**. Tired operators visually check every board for lifted pins, polarity flips, wrong values, and missing components. The miss rate is whatever-it-is.
 
-Indusia Visual Editor is the platform that fixes this. A manufacturing engineer who knows zero Python and zero computer vision can:
+The standard fix — hire a computer vision team, write graphflow YAML configs, train per-PCB models — takes weeks per board and assumes the factory has data scientists on payroll. Most don't.
 
-1. Upload a BOM (Excel/CSV) and a photograph of a known-good "golden" PCB.
-2. Watch Gemma 4 auto-detect every component on the board and propose an inspection pipeline.
-3. Review the AI-drawn bounding boxes on a labeling canvas — correct mistakes with a click, pick per-region which defects to check for.
-4. Approve training (Gate 1), wait while the model trains on the existing `auto-inspect-service` stack.
-5. Review evaluation metrics (mAP, per-component F1, sample predictions).
-6. Approve production deploy (Gate 2). Weights are pushed to the model registry, edges auto-pull, and the inspection runs on the MI line.
-7. Chat with the AI advisor when false-call rates climb: "C4 false-positive 5% di line 3, kenapa?"
+## The fix
 
-Everything happens in a browser. Zero YAML, zero CLI, zero domain expertise required from the factory user.
+A web app where a manufacturing engineer who has never written Python takes a brand-new PCB from photo to a model running on the production line in **one afternoon**:
 
-## Who this is for
+```
+Upload BOM → Upload golden photo (top + bottom) → Label defects
+                                                        ↓
+                  Promote ←  Eval  ← Train  ←  AI plans the pipeline
+```
 
-| User | What they do |
-|---|---|
-| **MI line supervisor / production engineer** | Primary. Onboards new PCBs, monitors deploys, handles false-call escalations. |
-| **Factory IT / system admin** | Deploys the platform on-prem, manages license, watches health. |
-| **Indusia AI engineering team** | Maintains the platform, ships new features, owns the cloud control plane. |
+Two manual gates (**Gate 1** before training, **Gate 2** before deploy) keep the human in the loop where it counts. Everything else is automatic — Gemma 4 plans the pipeline, pre-labels every component, suggests training hyperparameters, and answers your follow-up questions from a chat drawer.
 
-Not for: software developers as a labeling tool (use Label Studio directly), nor for general-purpose computer vision (this is PCB-specific).
+## What it looks like
 
-## Architecture at a glance
+The full UI lives in [Figma](https://www.figma.com/proto/bbNj0YkQGJr2GpsvAaSS3R?node-id=6-2&starting-point-node-id=6%3A2) (39 screens, dual-locale EN+ID, operator + engineer modes). Highlights:
+
+### 1. Sign in
+Single-tenant deployment, on-prem ready. Bahasa Indonesia switch lives in the top bar.
+
+![Sign in](docs/design/screens/01-login.png)
+
+### 2. Dashboard
+Each PCB project is a card with status (drafting / training / deployed). The right rail has a 4-step quick-start and a Gemma 4 advisor on standby.
+
+![Dashboard](docs/design/screens/02-dashboard.png)
+
+### 3. Labeling canvas
+Label Studio Frontend embedded as a React island inside Vue 3. Designators flow from the BOM into RectangleLabels; Gemma 4 has already drawn the green prediction boxes. The operator corrects mistakes, picks defect criteria per region, then saves.
+
+![Labeling canvas](docs/design/screens/03-labeling.png)
+
+### 4. Gate 1 — training preparation
+Dataset readiness (sufficient / moderate / at-risk buckets per designator), training-mode picker, three considerations the operator must read, and an engineer-mode reveal with the full hyperparameter grid (epochs, batch size, LR, augmentation intensity).
+
+![Gate 1 — training preparation](docs/design/screens/04-gate1.png)
+
+### 5. Live training
+Epoch progress strip, per-component state table (Done / Training / Queued), live mAP / F1 / Precision / Recall. Engineer mode reveals optimizer, GPU memory, and a tailing log terminal.
+
+![Training](docs/design/screens/05-training.png)
+
+### 6. Evaluation passed
+Threshold-coded metrics (mAP ≥ 0.80, F1 macro ≥ 0.80, per-component F1 ≥ 0.70). Failing components surface as red tiles the operator can click to jump straight into correction mode for the offending samples. Once everything is green, **Promote** unlocks.
+
+![Eval passed](docs/design/screens/06-eval-passed.png)
+
+### 7. Gate 2 — confirm deployment
+Final HITL gate. Operator sees model snapshot + registered edges (online/offline pills). Engineer reveal shows SHA256, registry tag, rollback target, and the literal `ais model push` command. Promote fires a modal interception then a success toast.
+
+![Gate 2 — confirm deployment](docs/design/screens/07-gate2.png)
+
+## Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ Browser — Vue 3 + Pinia + LSF-embedded canvas                    │
-│ Dashboard · Wizard · Labeling · Train/Eval · Deploy · Chat       │
+│ Browser — Vue 3.5 + TS strict + Pinia + Vite 7                   │
+│ AppShell (Sidebar · TopBar · ChatDrawer · ToastStack)            │
+│ 39 screens · EN+ID · operator+engineer modes · LSF canvas        │
 └─────────────────────────────┬────────────────────────────────────┘
-                              │ HTTPS · REST + SSE · WebSocket
+                              │ HTTPS · REST + SSE
                               ▼
 ┌──────────────────────────────────────────────────────────────────┐
 │ indusia-visual-editor — FastAPI service (this repo)              │
-│ routes/  project · asset · label · train · deploy · chat · ml    │
-│ services/ asset · project · label · llm · inspect_service ·      │
-│           deploy · inspect_scope                                  │
-│ db/      Postgres 16 (projects, bom_items, labels, train_runs,   │
-│          deployments, chat_sessions)                              │
-│ storage/ filesystem v1, S3/MinIO v2 (BOM, golden, drawings)      │
+│   routes/   auth · project · asset · bom · label · llm ·         │
+│             training · eval · deploy · edges · chat · adapt      │
+│   services/ asset · project · label · llm · inspect_service ·    │
+│             deploy · edge · auth · inspect_scope                 │
+│   db/       Postgres 16 (12 tables, migrations 0001-0011)        │
+│   utils/    structlog (JSON) · OpenTelemetry (auto + manual)     │
+│   storage/  filesystem with SHA256 dedup, 50MB cap               │
 └──┬──────────────────┬──────────────────────────┬─────────────────┘
-   │ HTTP             │ HTTP                     │ HTTP / WS
+   │ HTTP             │ HTTP                     │ HTTP / webhook
    ▼                  ▼                          ▼
 ┌─────────────┐  ┌─────────────────────┐  ┌─────────────────────────┐
 │ Ollama      │  │ auto-inspect-       │  │ auto-inspect-edge       │
 │ gemma4:31b  │  │ service (:8001)     │  │ (:8000, on-prem)        │
-│ (dedicated  │  │ — graphflow engine, │  │ — PLC, Hikrobot camera, │
-│ GPU)        │  │ training, model     │  │ pulls weights via       │
-│             │  │ registry (Git+LFS)  │  │ `ais model pull`        │
+│ 256K ctx    │  │ — graphflow engine, │  │ — PLC, Hikrobot camera, │
+│ dedicated   │  │ training, model     │  │ pulls weights via       │
+│ GPU box     │  │ registry (Git+LFS)  │  │ `ais model pull`        │
 └─────────────┘  └─────────────────────┘  └─────────────────────────┘
 ```
 
-Cloud control plane runs at Indusia. On-prem agent at each customer site handles labeling + training + inference; **PCB images never leave the factory** (privacy guarantee — only model weights and metadata reach the cloud).
+**Data privacy promise**: PCB images never leave the factory. The on-prem agent handles labeling + training + inference; only model weights and metadata reach Indusia's cloud control plane.
 
 ## Why it works
 
-| Decision | Why |
+| Decision | Rationale |
 |---|---|
-| Embed Label Studio Frontend as a React island in Vue 3 (Apache-2.0) | LSF already has the canvas we need — bbox + polygon + brush + keypoint + zoom + history + hotkeys + LS-JSON output. Saves ~3 weeks of custom Konva work, zero adapter code. |
-| Gemma 4 plays 4 roles: planner, pre-label, runtime defect judge, advisor | One brain across the platform. Dedicated GPU box, 256K context, structured-output validated by pydantic. |
-| Reuse `auto-inspect-service` for training + inference unchanged | Existing battle-tested stack with YOLO + Anomalib + OpenVINO + fiducial + OCR. We orchestrate; we don't reinvent. |
-| 2 mandatory HITL gates: approve before training + approve before deploy | Production safety. Never auto-approve. |
-| User-controlled per-region inspect scope in canvas (not BOM filter) | Trust user judgment. Smart defaults (MI/SMT heuristic) but full override. Inspection criteria picked per-region via `<Choices perRegion>` LSF UI. |
+| Embed Label Studio Frontend as a React island in Vue 3 (Apache-2.0) | Canvas, bbox, polygon, brush, keypoint, zoom, history, hotkeys, LS-JSON output — all free. Saves ~3 weeks of custom Konva work. |
+| Gemma 4 plays four roles: planner, pre-label, runtime defect judge, advisor | One brain across the platform. 256K context, structured output validated by pydantic. Defect-judge stays deferred to v1.5. |
+| Reuse `auto-inspect-service` for training + inference unchanged | Battle-tested YOLO + Anomalib + OpenVINO + fiducial + OCR stack. We orchestrate, we don't reinvent. |
+| Two mandatory HITL gates (Gate 1 before training, Gate 2 before deploy) | Production safety. Never auto-approve, even when metrics are green. |
+| User-controlled per-region inspect scope in canvas (not BOM filter) | Trust user judgment. Smart MI/SMT heuristic defaults but full override. |
+| Vendored LSF binary checked into `web/public/lsf/` (~7.5 MB) | Reproducible deploys. No npm-install dependency on Label Studio's build infrastructure. |
+| Direct push to `main`, no feature branches | Solo-developer project per [CLAUDE.md §13.5](CLAUDE.md). Branching is opt-in only when explicitly requested. |
 
-## End-state feature list
+## Status
 
-- **Project lifecycle**: dashboard, status badges, version history per PCB model
-- **BOM parsing**: Excel / CSV with multi-designator row expansion, MI-vs-SMT heuristic classification, fuzzy column matching, transactional persistence
-- **Asset management**: golden samples (top + bottom), PCB drawings, fiducial templates; SHA256-dedup, 50MB cap, filesystem v1 / S3 v2
-- **AI pre-labeling**: Gemma 4 auto-locates every BOM designator on the golden sample using both image and drawing as priors
-- **Labeling canvas**: LSF-embedded, per-region `inspect_scope` (inspected/skipped) + multi-select `defect_criteria`, color-coded by component type, confidence overlay (green/yellow/red), keyboard hotkeys
-- **Pipeline planner**: Gemma 4 reads scope+criteria, generates graphflow `config.yaml` + `locations.yaml` + per-component subgraphs targeting `auto-inspect-service` schema
-- **Training integration**: Gate 1 preview (dataset stats, AI-suggested epochs/augmentation), trigger via `auto-inspect-service /api/training/start`, SSE progress relay
-- **Eval view**: per-component F1 charts, mAP curves, sample prediction grid, comparison vs previous run
-- **Promote-to-production**: Gate 2 with eval review, push weights to Git+LFS registry, notify edges to pull
-- **Edge orchestration**: per-edge version pin (auto-pull-latest vs locked), webhook refresh, rollback
-- **Chat advisor**: slide-out drawer, Gemma sees project history + result metrics + relevant ROI crops, suggests retraining or threshold tweaks
-- **Auth + multi-tenant**: JWT email/password, organization isolation, simple roles (admin / engineer / viewer)
-- **Production hardening**: Docker Compose + Traefik, Postgres backup, log shipping, deployment runbook
+| Layer | Status | Notes |
+|---|---|---|
+| Backend | **M0–M14 shipped** | 395 tests passing · Auth (M13) · Production hardening (M14) · structlog + OpenTelemetry · Traefik + Postgres backup |
+| Frontend | **F0–F6 shipped** | 36 unit/component + 8 Playwright e2e passing · Full 39-screen Figma parity · MSW dev-mode mocks |
+| Runbook | Done | [`docs/runbook/{deploy,disaster-recovery,onboarding}.md`](docs/runbook/) |
+| v1.5 | Deferred | LSF ML backend protocol · runtime defect judge · multi-tenant SaaS · M15 dual-mode persistence |
+
+### Backend milestones
+
+| | What landed |
+|---|---|
+| **M0** Bootstrap | LSF build spike, FastAPI scaffold + `/health`, graphflow config spike, Vue + Vite + Pinia + Tailwind, Docker Compose dev env |
+| **M1** Project + Asset CRUD | Alembic baseline, `/api/projects` CRUD, asset upload with SHA256 dedup + 50MB cap, Dashboard view |
+| **M2** BOM parser + classifier | xlsx/csv parse with multi-designator expansion, MI/SMT heuristic, `defect_detector_mapping.yaml` (9 criteria) |
+| **M3** LLM client foundation | Ollama async httpx client with typed `LlmError` family + structured output, planner skeleton, `proposed_pipelines` table |
+| **M4** Planner adapter → graphflow | `detector_to_nodes.yaml` (13 presets → 51 nodes), per-component subgraph builder, atomic writer with rollback, `adapt_runs` table |
+| **M5** Pre-label assistant | Gemma 4 prelabel orchestrator with golden+drawing dual-image prior, `pre_labels` table (latest-wins) |
+| **M6** Labeling canvas | LSF vendored at `web/public/lsf/` with sha256 manifest, `labels` table (versioned per side), `derive_inspect_scope` writes `detector_presets` onto bom_items |
+| **M7** Training + SSE | `TrainingClient` with typed errors, `train_runs` table, `/api/training/start`, `/api/training/{run_id}/stream` SSE relay |
+| **M8** Gate 1 | `/dataset/stats` + `suggest_hyperparams` (Gemma 4, pydantic-bounded), composer endpoint |
+| **M9** Eval | `get_predictions` + `/eval` (metrics + predictions + prev-run delta) |
+| **M10** Gate 2 + promote | `services/deploy/registry.push_model` async wrapper, `deployments` table, audit-row-before-502, three env vars |
+| **M11** Edge notification + pin | `edges` table, exponential-backoff fan-out, per-edge `NotifyOutcome`, manual rollback via PUT `/pin` |
+| **M12** Chat advisor | `chat_sessions` table, context builder (system + project + last 3 train runs + 20 turns, 600 KB budget), Bahasa Indonesia advisor prompt, SSE stream |
+| **M13** Auth + roles | JWT bearer + refresh cookie, organization isolation, RBAC (admin / engineer / viewer), seed `default` org |
+| **M14** Production hardening | Multi-stage Dockerfiles, Traefik v3 (ACME + secure headers), daily pg_dump + S3, structlog JSON logs + request_id middleware, OpenTelemetry auto + manual spans, full runbook |
+
+### Frontend phases
+
+| | What landed |
+|---|---|
+| **F0** Foundation | Clean `web/` (preserved `public/lsf/` + `.gitattributes`), Vite 7 + Vue 3.5 + TS strict + Pinia 2 + Tailwind 3 + Reka UI + vue-i18n 10 + MSW 2 + Vitest 2 + Playwright 1.49 |
+| **F1** Shell + primitives | `AppShell`, `AppSidebar` (workspace + settings + AI advisor flush bottom), `AppTopBar` (breadcrumb + EN/ID switcher + engineer toggle + user logout), `AppButton` |
+| **F2** Auth + Dashboard | LoginView + SignupView wired to backend M13 `/api/auth/*` with envelope errors, refresh-cookie + bearer interceptor, `useAuthStore` with `loadCurrentUser` rehydrate; Dashboard 8:2 layout with 4 stat cards + projects table + quick-start rail |
+| **F3** Wizard | 5-step stepper (project basics → BOM → golden samples → drawing → review) wired end-to-end; `POST /api/projects` then `POST /assets?kind=` per step; BOM preview table (designator/value/package/qty/MI badge); URL rewrites `/projects/new` → real UUID after step 1 |
+| **F4** Labeling | `LSFEmbed.vue` dynamic-loads `/lsf/main.{js,css}`, instantiates `window.LabelStudio` with `reactVersion:'v18'`, wires onSubmit/onUpdate/onEntityCreate to Vue emits; `RegionDetailPanel` shows X/Y/W/H/R° + designator + 8 defect-criteria checkboxes + 4 action icons; correction mode banner driven by `?correction=1&samples=...` |
+| **F5** Training + Eval | `useTrainingStore` with full SSE consumer (epoch/succeeded/failed events update live metrics + per-component queue + 50-line log buffer); Gate 1 dual-mode (op default + engineer reveal); Training live view; SetupEvalView with test-set picker + readiness gates; EvalView state machine with threshold-coded metrics + failing-component tiles + verdict-driven actions (correct / retrain / promote) |
+| **F6** Gate 2 + settings + overlays | Gate 2 with HITL banner + model snapshot + edges card + engineer-reveal tech details + confirm-checkbox + modal interception + promote toast; 5 settings views (Models / Edges / Datasets / Team / Preferences); `ChatDrawer` overlay (M12 SSE via fetch+ReadableStream because EventSource can't POST a body); `ToastStack` overlay with 3 variants and auto-dismiss TTL |
 
 ## Tech stack
 
-| Layer | Choice |
-|---|---|
-| Backend | Python 3.10+, FastAPI, pydantic-settings, SQLAlchemy 2 async, Alembic, httpx, sse-starlette |
-| Database | PostgreSQL 16 |
-| LLM | Ollama `gemma4:31b` on dedicated GPU (20GB, 256K context) |
-| Frontend | Vue 3 + Vite + TypeScript + Pinia + Vue Router + Tailwind 3 |
-| Labeling canvas | Label Studio Frontend (Apache-2.0) vendored as ES-module bundle |
-| Containers | Docker Compose (dev + prod) |
-| Reverse proxy | Traefik (auto HTTPS) |
-| Testing | pytest + pytest-asyncio + httpx ASGITransport (backend) · Vitest + @vue/test-utils (frontend) |
-| Code style | black + isort + flake8 (Python) · eslint + prettier (Vue) |
-
-## Repository layout
-
-```
-indusia-visual-editor/
-├── src/indusia_visual_editor/   FastAPI service — routes, services, db, schemas
-├── tests/                       pytest suite + fixtures + spike investigations
-├── web/                         Vue 3 SPA (dashboard, wizard, labeling, train, deploy, chat)
-├── docs/
-│   ├── plans/                   phased implementation plans (gaspol-plan output)
-│   ├── specs/                   technical specs (LSF adoption, graphflow schema, design)
-│   ├── roadmap/                 deferred-to-v1.5+ designs
-│   └── archive/                 superseded designs (kept for traceability)
-├── alembic/                     DB migrations
-├── data/                        committed YAML data (taxonomy, detector mapping)
-├── docker-compose.dev.yml       dev environment
-├── pyproject.toml               Poetry project
-└── CLAUDE.md                    project memory — read FIRST every session
-```
+| Layer | Choice | Version |
+|---|---|---|
+| Backend | Python, FastAPI, pydantic-settings, SQLAlchemy 2 async, Alembic, httpx, sse-starlette | 3.10+ / 0.121+ |
+| Database | PostgreSQL | 16 |
+| LLM | Ollama `gemma4:31b` on dedicated GPU | 20 GB / 256K ctx |
+| Frontend | Vue, Vite, TypeScript, Pinia, vue-router, Tailwind, Reka UI, vue-i18n, axios | 3.5 / 7 / 5.7 |
+| Labeling canvas | Label Studio Frontend (Apache-2.0) vendored | ~7.5 MB |
+| Auth | JWT bearer + HttpOnly refresh cookie | M13 |
+| Containers | Docker Compose (dev + prod) | M14 |
+| Reverse proxy | Traefik v3 (auto HTTPS via Let's Encrypt) | M14 |
+| Observability | structlog (JSON) + OpenTelemetry (FastAPI + httpx + manual) | M14 |
+| Testing — backend | pytest + pytest-asyncio + httpx ASGITransport | 395 passing |
+| Testing — frontend | Vitest + @vue/test-utils + happy-dom + Playwright | 36 unit + 8 e2e |
+| Code style | black + isort + flake8 · ESLint flat + Prettier + eslint-plugin-vue | — |
 
 ## Quick start (development)
 
-Prerequisites: Node 24 (via nvm-windows), Python 3.10+, Poetry 2.x, Docker Desktop, an Ollama instance running `gemma4:31b`.
+**Prerequisites**: Node 20+, Python 3.10+, Poetry 2, Docker Desktop, an Ollama instance running `gemma4:31b`.
 
 ```powershell
-# Database (host port 5433 → container 5432)
+# 1. Database (host port 5433 → container 5432)
 docker compose -f docker-compose.dev.yml up -d postgres
-$env:IVE_DATABASE_URL="postgresql+asyncpg://ive:ive@localhost:5433/ive"
+$env:IVE_DATABASE_URL = "postgresql+asyncpg://ive:ive@localhost:5433/ive"
 poetry run alembic upgrade head
 
-# Backend
+# 2. Backend on :8002
 poetry install
 poetry run uvicorn indusia_visual_editor.main:app --reload --host 0.0.0.0 --port 8002
 # → http://localhost:8002/health
 
-# Frontend
+# 3. Frontend on :5173 (MSW serves dev-mode mocks until backend is up)
 cd web
 pnpm install
 pnpm dev
 # → http://localhost:5173
 
 # Run all tests
-poetry run pytest -v          # backend (278 pass)
-cd web && pnpm test           # frontend (36 pass)
+poetry run pytest -v                           # backend (395 pass)
+cd web && pnpm test:unit && pnpm test:e2e      # frontend (36 unit + 8 e2e)
 ```
 
-The LSF bundle is built once from the upstream `D:\Projects\label-studio` repo and vendored into `web/public/lsf/` — see [`docs/specs/lsf-build.md`](docs/specs/lsf-build.md) for the verified build procedure.
+The LSF bundle is built once from upstream `D:\Projects\label-studio` and vendored under `web/public/lsf/` — see [`docs/specs/lsf-build.md`](docs/specs/lsf-build.md).
 
-## Quick start (factory user — post-deploy)
+## Quick start (factory user, post-deploy)
 
-1. Open the platform in Chrome / Edge at the URL your IT team provided.
-2. Sign in with email + password.
-3. Click **New Project** — name it after the PCB model code from your customer (e.g. `NV80-017542-0501`).
+1. Open the platform URL in Chrome / Edge.
+2. Sign in with the credentials your IT team provided.
+3. Click **+ New project** → name it after the PCB model code from your customer (e.g. `NV80-017542-0501`).
 4. Upload `BOM.xlsx` → review the parsed component table.
-5. Upload `golden_top.jpg` and `golden_bottom.jpg`. Optionally upload the PCB drawing.
-6. Open the labeling canvas — Gemma 4 will have auto-placed bounding boxes on every component it found. Review them, fix any mistakes.
-7. For each component you want to inspect, pick **inspect_scope = inspected** and tick the defect criteria you care about (missing, polarity, lifted pin, etc.). Skip the ones you don't.
-8. Click **🤖 Build inspection pipeline** → review Gemma's plan → **Start Training** (Gate 1).
-9. Wait for training to finish (~10-30 min for small boards, longer for complex ones).
-10. Review the evaluation metrics → **Promote to Production** (Gate 2).
-11. The inspection runs on your MI line. The chat drawer is there if false calls climb.
+5. Upload `golden_top.jpg` + `golden_bottom.jpg`. Drop in the PCB drawing.
+6. Open the labeling canvas — Gemma 4 pre-placed bounding boxes. Correct the wrong ones, pick defect criteria per region (missing / polarity / lifted pin / wrong value …).
+7. Click **Approve & start training** at Gate 1.
+8. Wait ~10–30 min while training streams epochs into the live view.
+9. Review the eval results. Click any red component tile to enter correction mode for just those samples, then retrain.
+10. Once all thresholds are green, click **Promote** at Gate 2.
+11. The model is live on every online edge. Use the chat drawer (bottom-right `?` button) if anything surprises you.
 
-## Status
+## Repository layout
 
-**Active development — M0 through M12 shipped (289 backend + 40 frontend tests pass = 329 total).** Following the milestone roadmap in [`docs/plans/2026-05-22-visual-editor-mvp.md`](docs/plans/2026-05-22-visual-editor-mvp.md) (M0–M4) and [`docs/plans/2026-05-22-visual-editor-mvp-m5-m14.md`](docs/plans/2026-05-22-visual-editor-mvp-m5-m14.md) (M5–M14):
-
-| Milestone | Status | What landed |
-|---|---|---|
-| Design + plan + adoption specs | ✅ Done | M0–M14 roadmap, LSF adoption spec, graphflow schema spec, dashboard tokens, ais-model-push spec |
-| M0 — Bootstrap | ✅ Done | LSF build spike, FastAPI scaffold + `/health`, graphflow config.yaml spike, Vue 3 + Vite + Pinia + Tailwind frontend scaffold, Docker Compose dev env (postgres:16 on host port 5433) |
-| M1 — Project + Asset CRUD + Dashboard | ✅ Done | Alembic baseline (projects/assets/bom_items), `/api/projects` CRUD, `/api/projects/{id}/assets` upload + list + binary (SHA256 dedup, 50MB cap, path-traversal-safe), Dashboard view with real API + create dialog + status badges |
-| M2 — BOM parser + classifier + preview | ✅ Done | xlsx/csv parser with multi-designator expansion + Bahasa Indonesia errors, REPLACE persistence, MI/SMT heuristic classifier (`component_taxonomy.yaml`), `derive_inspect_scope` (LSF annotation → BomItemUpdate with detector presets), `defect_detector_mapping.yaml` (9 canonical criteria), ProjectWizard step 1 with drag-drop + BomTable |
-| M3 — LLM client foundation | ✅ Done | Ollama async httpx client (typed `LlmError` subclasses, structured-output via `format=`, base64 image passthrough), pydantic schemas for all four Gemma roles with `extra="forbid"` + field validators, planner skeleton with system prompt at `prompts/planner.md`, `POST/GET /api/projects/{id}/llm/plan` route + `proposed_pipelines` versioned table |
-| M4 — Planner adapter → graphflow writer | ✅ Done | `data/detector_to_nodes.yaml` mapping 13 presets to 51-name registry, `node_map.py`, per-component `subgraph.py` builder, `top_config.py` + bundled `default_locations.yaml` + `default_settings.yaml`, atomic `writer.py` (tempdir + backup-on-overwrite + rollback-on-fail), `compose.py` orchestrator, `POST/GET /api/projects/{id}/adapt` route + `adapt_runs` table |
-| M5 — Pre-label assistant | ✅ Done | `services/llm/prelabel.py` orchestrator with golden+drawing dual-image prior, `prompts/prelabel.md` system prompt, `pre_labels` table (latest-wins per side via UNIQUE constraint), `POST/GET /api/projects/{id}/llm/prelabel?side=` route + Wizard step 2 PreLabelPanel with per-side run + region count UI |
-| M6 — Labeling canvas (LSF embed) | ✅ Done | LSF bundle vendored at `web/public/lsf/` via `scripts/vendor-lsf.ps1` (~7.5MB, sha256 manifest), `labels` table (versioned per side), `GET /api/projects/{id}/labels/task?side=` returning composed LSF task + predictions, `POST /api/projects/{id}/labels` that pipes through `derive_inspect_scope` and persists `detector_presets` onto bom_items, `LSFEmbed.vue` React-island wrapper with `reactVersion:'v18'`, `LabelingView.vue` at `/projects/:id/labeling` |
-| M7 — Training integration + SSE | ✅ Done | `services/inspect_service/training_client.TrainingClient` (typed `InspectServiceError` subclasses, mock-transport tested), `train_runs` table, `POST /api/projects/{id}/training/start` + history GET, `GET /api/training/{run_id}/stream` SSE relay that updates `TrainRun.status` + `metrics_json` on terminal events |
-| M8 — Gate 1 (training approval) | ✅ Done | `GET /api/projects/{id}/dataset/stats?side=` (latest Label via `derive_inspect_scope` + MI/SMT join), `services/llm/hyperparams.suggest_hyperparams` (pydantic-bounded `Hyperparameters{epochs ∈ [5,200], batch_size ∈ [4,64], augmentation_intensity ∈ low/medium/high, notes}`), `POST /training/suggest-hyperparams` composer route, `Gate1View.vue` at `/projects/:id/gate1`, `TrainingProgressView.vue` SSE consumer |
-| M9 — Eval metrics view | ✅ Done | `TrainingClient.get_predictions(job_id)` + `GET /api/training/{run_id}/eval` (assembles metrics + live predictions + prev-run delta per-project), `EvalView.vue` at `/projects/:id/eval/:runId` with mAP card + delta arrow + `MetricChart.vue` (plain-SVG per-component F1, threshold-coded colors, prev-run outline) + `PredictionGrid.vue` (top-10 worst FP/FN) |
-| M10 — Gate 2 + promote-to-production | ✅ Done | `docs/specs/ais-model-push.md` (plan-correction: real CLI is `ais model add → commit → push`, no `--version` flag), `deployments` table, `services/deploy/registry.push_model` async wrapper with `PushResult{stage}` short-circuit + `asyncio.wait_for` timeout, `POST/GET /api/projects/{id}/deploy` (audit row persists BEFORE 502 envelope), `Gate2View.vue` at `/projects/:id/eval/:runId/gate2` with mandatory confirmation modal, three new env vars (`IVE_AIS_BINARY`, `IVE_REGISTRY_ROOT`, `IVE_AIS_PUSH_TIMEOUT_SECS`) |
-| M11 — Edge notification + version pin | ✅ Done | `edges` table (UNIQUE name + JSONB version_policy), `POST/GET /api/edges` + `PUT /api/edges/{id}` (policy) + `PUT /api/edges/{id}/pin` (manual rollback / unpin via empty body), `services/edge/notify.notify_edges` async fan-out with 1/2/4s exponential backoff (3 attempts), per-edge `NotifyOutcome` so a single flaky edge doesn't roll back the deployment, pinned edges receive their pinned target not the deployment version. Wired into deploy success path — outcomes persist to `deployments.edges_notified` JSONB, SKIPPED on push failure |
-| M12 — Chat advisor | ✅ Done | `chat_sessions` table (migration 0010), `POST/GET /api/projects/{id}/chat` + `GET /api/chat/{session_id}`, `services/llm/chat.build_chat_context` (system + project+last-3-train_runs-metrics + last-20-turn history + new user, 600k char budget, oldest-history-drop), `prompts/advisor.md` Bahasa Indonesia concrete-next-step prompt, `OllamaClient.stream_chat()` NDJSON async iterator, `POST /api/chat/{session_id}/stream` SSE relay (persists user+assistant turns), `ChatDrawer.vue` floating-toggle slide-out (user `self-end` / assistant `self-start` bubbles, typing indicator, fetch+ReadableStream client because EventSource can't POST), mounted in `App.vue` only when route has `:id` param |
-| M13 — Auth + multi-user | ⏳ Roadmap | JWT email/password, org isolation, simple roles |
-| M14 — Polish + production deploy | ⏳ Roadmap | Traefik reverse proxy, Docker Compose prod stack, structured logging |
-
-Refer to [CLAUDE.md](CLAUDE.md) for the authoritative current-state inventory (routes built, tables existing, conventions, anti-hallucination rules) — that file is updated every phase, this README describes the eventual product.
+```
+indusia-visual-editor/
+├── src/indusia_visual_editor/   FastAPI service (routes · services · db · schemas · utils)
+├── web/                         Vue 3 SPA (api · stores · components · views · i18n · mocks · tests)
+├── tests/                       backend pytest suite + fixtures
+├── docs/
+│   ├── design/screens/          Figma hero screens (this README pulls from here)
+│   ├── plans/                   gaspol-plan output (M0–M14 backend, F0–F6 frontend)
+│   ├── specs/                   ML dual-mode workflow, LSF adoption, graphflow schema, ais-model-push
+│   ├── runbook/                 deploy · disaster recovery · operator onboarding
+│   ├── roadmap/                 deferred-to-v1.5
+│   └── archive/                 superseded designs (kept for traceability)
+├── alembic/                     DB migrations 0001 → 0011
+├── data/                        committed YAML data (taxonomy, detector mapping)
+├── infra/                       Traefik + Postgres backup scripts (M14)
+├── docker-compose.dev.yml       dev environment (postgres on :5433)
+├── docker-compose.prod.yml      prod environment (traefik + api + web + postgres + backup)
+├── pyproject.toml               Poetry project
+├── CLAUDE.md                    project memory — read FIRST every session
+└── README.md                    this file
+```
 
 ## Documentation map
 
 | Doc | Purpose |
 |---|---|
-| [CLAUDE.md](CLAUDE.md) | Project memory — current state, conventions, anti-hallucination rules. **Read first.** |
-| [docs/plans/2026-05-22-visual-editor-mvp.md](docs/plans/2026-05-22-visual-editor-mvp.md) | Authoritative milestone plan (M0–M14) with per-phase steps |
-| [docs/specs/label-studio-adoption.md](docs/specs/label-studio-adoption.md) | LSF embedding strategy + corrected build commands |
-| [docs/specs/lsf-build.md](docs/specs/lsf-build.md) | Verified LSF build procedure with artifact inventory |
-| [docs/specs/graphflow-config-schema.md](docs/specs/graphflow-config-schema.md) | auto-inspect-service config.yaml + locations.yaml schema reference |
-| [docs/roadmap/inspection-spec-document-v1.5.md](docs/roadmap/inspection-spec-document-v1.5.md) | PDF inspection-form parser (deferred to v1.5) |
+| [CLAUDE.md](CLAUDE.md) | Project memory — authoritative current-state inventory, conventions, anti-hallucination rules. **Read first.** |
+| [docs/plans/2026-05-22-visual-editor-mvp.md](docs/plans/2026-05-22-visual-editor-mvp.md) | Backend M0–M4 plan |
+| [docs/plans/2026-05-22-visual-editor-mvp-m5-m14.md](docs/plans/2026-05-22-visual-editor-mvp-m5-m14.md) | Backend M5–M14 plan |
+| [docs/plans/2026-05-27-vue-fe-migration.md](docs/plans/2026-05-27-vue-fe-migration.md) | Frontend F0–F6 design + plan |
+| [docs/specs/ml-workflow-dual-mode.md](docs/specs/ml-workflow-dual-mode.md) | ML workflow naming + operator/engineer dual-mode UI spec |
+| [docs/specs/label-studio-adoption.md](docs/specs/label-studio-adoption.md) | LSF embedding strategy + boundary |
+| [docs/specs/lsf-build.md](docs/specs/lsf-build.md) | Verified LSF build procedure |
+| [docs/specs/graphflow-config-schema.md](docs/specs/graphflow-config-schema.md) | auto-inspect-service config + locations schema |
+| [docs/runbook/deploy.md](docs/runbook/deploy.md) | First-time bootstrap + routine re-deploy + rollback |
+| [docs/runbook/disaster-recovery.md](docs/runbook/disaster-recovery.md) | Three failure classes + quarterly drill cadence |
+| [docs/runbook/onboarding.md](docs/runbook/onboarding.md) | Bahasa Indonesia operator walkthrough |
 
 ## Related projects
 
@@ -213,4 +270,4 @@ Proprietary — Indusia AI. The embedded Label Studio Frontend bundle is Apache-
 
 ## Contact
 
-For questions about the platform: indusiaai@gmail.com.
+indusiaai@gmail.com
