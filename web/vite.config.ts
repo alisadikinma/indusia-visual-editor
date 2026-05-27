@@ -10,11 +10,14 @@ export default defineConfig({
     },
   },
   server: {
+    host: '127.0.0.1',
     port: 5173,
     strictPort: true,
     proxy: {
+      // Force IPv4 — Node 17+ resolves `localhost` to ::1 first on Windows,
+      // but uvicorn binding 0.0.0.0 is IPv4-only, so the proxy hangs/500s.
       '/api': {
-        target: 'http://localhost:8002',
+        target: 'http://127.0.0.1:8002',
         changeOrigin: true,
       },
     },
