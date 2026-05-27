@@ -190,7 +190,14 @@ def _load_csv(file_bytes: bytes) -> list[list[object]]:
     except csv.Error:
         dialect = csv.excel
     reader = csv.reader(io.StringIO(text), dialect=dialect)
-    return [list(row) for row in reader]
+    try:
+        return [list(row) for row in reader]
+    except csv.Error as exc:
+        raise BomParseError(
+            "File BOM .csv tidak bisa dibaca — kemungkinan ada newline di dalam "
+            "field yang tidak di-quote. Simpan ulang sebagai .xlsx atau perbaiki "
+            f"quoting sebelum upload. Detail: {exc}"
+        ) from exc
 
 
 def parse_bom(file_bytes: bytes, filename: str) -> list[BomItemDraft]:

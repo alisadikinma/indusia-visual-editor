@@ -141,3 +141,14 @@ def test_tolerates_header_not_in_row_1():
 def test_empty_file_raises_bom_parse_error():
     with pytest.raises(BomParseError):
         parse_bom(b"", "empty.csv")
+
+
+def test_malformed_csv_raises_bom_parse_error_not_csv_error():
+    """Regression: a CSV with lone-CR mid-field used to bubble csv.Error up
+    as a 500 because the try/except csv.Error in _load_csv only wrapped the
+    Sniffer call, not the reader iteration. Now it must be converted to
+    BomParseError so the route returns 422 with an Indonesian message."""
+    malformed = b"designator,value\r\nR1,10k\rR2,1k\r\n"
+    with pytest.raises(BomParseError) as exc_info:
+        parse_bom(malformed, "broken.csv")
+    assert ".csv" in str(exc_info.value)
