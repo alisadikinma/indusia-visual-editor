@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import AppSidebar from './AppSidebar.vue'
 import AppTopBar from './AppTopBar.vue'
+import ChatDrawer from '@/components/overlays/ChatDrawer.vue'
+import ToastStack from '@/components/overlays/ToastStack.vue'
 </script>
 
 <template>
@@ -12,5 +14,7 @@ import AppTopBar from './AppTopBar.vue'
         <slot />
       </main>
     </div>
+    <ChatDrawer />
+    <ToastStack />
   </div>
 </template>

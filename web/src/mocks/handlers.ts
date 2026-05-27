@@ -115,6 +115,167 @@ interface MockTrainRun {
 
 const trainRunsDb: MockTrainRun[] = []
 
+interface MockEdge {
+  id: string
+  name: string
+  webhook_url: string
+  version_policy: {
+    mode: 'auto_pull_latest' | 'pinned'
+    pinned_model?: string
+    pinned_version?: string
+  }
+  registered_at: string
+  last_seen_at: string | null
+}
+
+const now = Date.now()
+const edgesDb: MockEdge[] = [
+  {
+    id: 'edge-01',
+    name: 'EDGE-01 · Line A',
+    webhook_url: 'https://edge-01.factory.local/hook',
+    version_policy: { mode: 'auto_pull_latest' },
+    registered_at: '2026-04-01T01:00:00Z',
+    last_seen_at: new Date(now - 30_000).toISOString(),
+  },
+  {
+    id: 'edge-02',
+    name: 'EDGE-02 · Line B',
+    webhook_url: 'https://edge-02.factory.local/hook',
+    version_policy: {
+      mode: 'pinned',
+      pinned_model: 'pcb-a12',
+      pinned_version: 'v20260420-002',
+    },
+    registered_at: '2026-04-01T01:05:00Z',
+    last_seen_at: new Date(now - 90_000).toISOString(),
+  },
+  {
+    id: 'edge-03',
+    name: 'EDGE-03 · Repair bay',
+    webhook_url: 'https://edge-03.factory.local/hook',
+    version_policy: { mode: 'auto_pull_latest' },
+    registered_at: '2026-05-12T07:30:00Z',
+    last_seen_at: new Date(now - 45_000).toISOString(),
+  },
+  {
+    id: 'edge-04',
+    name: 'EDGE-04 · Sample QA',
+    webhook_url: 'https://edge-04.factory.local/hook',
+    version_policy: { mode: 'auto_pull_latest' },
+    registered_at: '2026-05-20T03:11:00Z',
+    last_seen_at: null,
+  },
+]
+
+const modelsDb = [
+  {
+    id: 'm-1',
+    project_name: 'PCB-A12 Main Board',
+    pcb_name: 'pcb-a12',
+    version: 'v20260525-3f01',
+    sha256: 'b3f9c1a7e4d2bc88aabb1234efcd567890aabbccddeeff00112233445566778899',
+    size_mb: 184,
+    promoted_at: '2026-05-25T08:42:00Z',
+    pinned_edges: 1,
+    status: 'production' as const,
+  },
+  {
+    id: 'm-2',
+    project_name: 'PCB-A12 Main Board',
+    pcb_name: 'pcb-a12',
+    version: 'v20260420-002',
+    sha256: 'a1b2c3d4e5f6789012345678abcdef0123456789aabbccddeeff00112233445566',
+    size_mb: 182,
+    promoted_at: '2026-04-20T10:05:00Z',
+    pinned_edges: 1,
+    status: 'archived' as const,
+  },
+  {
+    id: 'm-3',
+    project_name: 'PCB-B07 Driver Board',
+    pcb_name: 'pcb-b07',
+    version: 'v20260527-stage',
+    sha256: 'c4d5e6f7a8b9012345678901234567890abcdef0123456789aabbccddeeff0011',
+    size_mb: 176,
+    promoted_at: '2026-05-27T02:30:00Z',
+    pinned_edges: 0,
+    status: 'staged' as const,
+  },
+]
+
+const datasetsDb = [
+  {
+    id: 'd-1',
+    name: 'pcb-a12-train-v3',
+    project: 'pcb-a12-main',
+    region_count: 1840,
+    size_mb: 612,
+    created_at: '2026-05-22T09:00:00Z',
+    kind: 'training' as const,
+  },
+  {
+    id: 'd-2',
+    name: 'pcb-a12-holdout-v3',
+    project: 'pcb-a12-main',
+    region_count: 142,
+    size_mb: 48,
+    created_at: '2026-05-22T09:01:00Z',
+    kind: 'holdout' as const,
+  },
+  {
+    id: 'd-3',
+    name: 'edge-prod-24h-2026-05-26',
+    project: 'pcb-a12-main',
+    region_count: 24,
+    size_mb: 6,
+    created_at: '2026-05-26T23:00:00Z',
+    kind: 'production_run' as const,
+  },
+  {
+    id: 'd-4',
+    name: 'pcb-b07-train-v1',
+    project: 'pcb-b07-driver',
+    region_count: 920,
+    size_mb: 304,
+    created_at: '2026-05-19T01:30:00Z',
+    kind: 'training' as const,
+  },
+]
+
+const teamDb = [
+  {
+    id: 't-1',
+    email: 'demo@indusia.example',
+    role: 'admin' as const,
+    last_active_at: new Date().toISOString(),
+    created_at: '2026-03-01T00:00:00Z',
+  },
+  {
+    id: 't-2',
+    email: 'engineer@indusia.example',
+    role: 'engineer' as const,
+    last_active_at: new Date(now - 60 * 60_000).toISOString(),
+    created_at: '2026-03-15T00:00:00Z',
+  },
+  {
+    id: 't-3',
+    email: 'viewer@indusia.example',
+    role: 'viewer' as const,
+    last_active_at: new Date(now - 24 * 60 * 60_000).toISOString(),
+    created_at: '2026-04-12T00:00:00Z',
+  },
+]
+
+interface MockChatSession {
+  id: string
+  project_id: string
+  messages_json: Array<{ role: 'user' | 'assistant' | 'system'; content: string; ts: string }>
+  created_at: string
+  updated_at: string
+}
+const chatDb: MockChatSession[] = []
+
 function sampleStats() {
   const designators = ['R1', 'R2', 'C1', 'C4', 'U1', 'U7', 'J1', 'J5', 'D1', 'D2']
   const per = designators.map((d, i) => {
@@ -465,6 +626,112 @@ ${labelTags}
   http.get('/api/training/:runId/eval', ({ params }) => {
     const runId = String(params.runId)
     return HttpResponse.json(envelope(sampleEval(runId)))
+  }),
+
+  // ───── deploy ─────
+  http.post('/api/projects/:id/deploy', ({ params }) => {
+    const projectId = String(params.id)
+    const now = new Date()
+    const stamp = now.toISOString().replace(/[-:T]/g, '').slice(0, 14)
+    const sha = Array.from({ length: 64 }, () =>
+      Math.floor(Math.random() * 16).toString(16),
+    ).join('')
+    const deployment = {
+      id: crypto.randomUUID(),
+      project_id: projectId,
+      train_run_id: trainRunsDb[0]?.id ?? crypto.randomUUID(),
+      model_version: `v${stamp}-${projectId.slice(0, 6)}`,
+      edges_notified: edgesDb.map((e) => ({
+        edge_id: e.id,
+        edge_name: e.name,
+        ok: e.last_seen_at != null,
+        status_code: e.last_seen_at != null ? 200 : null,
+        error: e.last_seen_at != null ? null : 'edge unreachable',
+      })),
+      deployed_at: now.toISOString(),
+      sha256: sha,
+      registry_tag: `pcb-${projectId.slice(0, 6)}@v${stamp}`,
+      push_command: `ais model push --pcb pcb-${projectId.slice(0, 6)} --tag v${stamp}`,
+    }
+    return HttpResponse.json(envelope(deployment, 'promoted to production'), { status: 201 })
+  }),
+  http.get('/api/projects/:id/deploy', () => HttpResponse.json(envelope([]))),
+
+  // ───── edges ─────
+  http.get('/api/edges', () => HttpResponse.json(envelope(edgesDb))),
+  http.put('/api/edges/:id/pin', async ({ params, request }) => {
+    const id = String(params.id)
+    const body = (await request.json()) as { model_name: string | null; version: string | null }
+    const idx = edgesDb.findIndex((e) => e.id === id)
+    if (idx === -1) return failed('edge not found', 404)
+    const pin = body.model_name != null && body.version != null
+    edgesDb[idx] = {
+      ...edgesDb[idx],
+      version_policy: pin
+        ? {
+            mode: 'pinned',
+            pinned_model: body.model_name!,
+            pinned_version: body.version!,
+          }
+        : { mode: 'auto_pull_latest' },
+    }
+    return HttpResponse.json(envelope(edgesDb[idx]))
+  }),
+
+  // ───── models / datasets / team (settings page mocks) ─────
+  http.get('/api/models', () => HttpResponse.json(envelope(modelsDb))),
+  http.get('/api/datasets', () => HttpResponse.json(envelope(datasetsDb))),
+  http.get('/api/team', () => HttpResponse.json(envelope(teamDb))),
+
+  // ───── chat (M12) ─────
+  http.get('/api/projects/:id/chat', ({ params }) => {
+    const projectId = String(params.id)
+    const sessions = chatDb.filter((s) => s.project_id === projectId)
+    return HttpResponse.json(envelope(sessions))
+  }),
+  http.post('/api/projects/:id/chat', ({ params }) => {
+    const projectId = String(params.id)
+    const session = {
+      id: crypto.randomUUID(),
+      project_id: projectId,
+      messages_json: [],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }
+    chatDb.push(session)
+    return HttpResponse.json(envelope(session, 'session created'), { status: 201 })
+  }),
+  http.get('/api/chat/:sessionId', ({ params }) => {
+    const session = chatDb.find((s) => s.id === String(params.sessionId))
+    if (!session) return failed('session not found', 404)
+    return HttpResponse.json(envelope(session))
+  }),
+  http.post('/api/chat/:sessionId/stream', async ({ params, request }) => {
+    const session = chatDb.find((s) => s.id === String(params.sessionId))
+    if (!session) return failed('session not found', 404)
+    const body = (await request.json()) as { user_message: string }
+    const reply = `Berdasarkan run terakhir, ${body.user_message.slice(0, 60)}… — saya sarankan periksa per-component F1 dan tambah 5-10 sampel untuk komponen MI yang masih di bawah threshold 0.70.`
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        const tokens = reply.split(' ')
+        for (const token of tokens) {
+          await delay(40)
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ delta: token + ' ' })}\n\n`),
+          )
+        }
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ event: 'done' })}\n\n`))
+        controller.close()
+      },
+    })
+    return new HttpResponse(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    })
   }),
 
   http.post('/api/projects/:id/llm/prelabel', ({ params, request }) => {

@@ -67,6 +67,36 @@ const routes: RouteRecordRaw[] = [
     meta: { titleKey: 'nav.gate2' },
   },
   {
+    path: '/models',
+    name: 'models',
+    component: () => import('@/views/ModelsView.vue'),
+    meta: { titleKey: 'nav.models' },
+  },
+  {
+    path: '/edges',
+    name: 'edges',
+    component: () => import('@/views/EdgesView.vue'),
+    meta: { titleKey: 'nav.edges' },
+  },
+  {
+    path: '/datasets',
+    name: 'datasets',
+    component: () => import('@/views/DatasetsView.vue'),
+    meta: { titleKey: 'nav.datasets' },
+  },
+  {
+    path: '/team',
+    name: 'team',
+    component: () => import('@/views/TeamView.vue'),
+    meta: { titleKey: 'nav.team' },
+  },
+  {
+    path: '/preferences',
+    name: 'preferences',
+    component: () => import('@/views/PreferencesView.vue'),
+    meta: { titleKey: 'nav.preferences' },
+  },
+  {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('@/views/NotFoundView.vue'),

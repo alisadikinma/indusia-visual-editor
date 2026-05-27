@@ -23,11 +23,11 @@ const workspaceItems = computed<NavItem[]>(() => [
 ])
 
 const settingsItems = computed<NavItem[]>(() => [
-  { labelKey: 'nav.models', icon: 'box', disabled: true },
-  { labelKey: 'nav.edges', icon: 'server', disabled: true },
-  { labelKey: 'nav.datasets', icon: 'database', disabled: true },
-  { labelKey: 'nav.team', icon: 'users', disabled: true },
-  { labelKey: 'nav.preferences', icon: 'settings', disabled: true },
+  { to: '/models', labelKey: 'nav.models', icon: 'box' },
+  { to: '/edges', labelKey: 'nav.edges', icon: 'server' },
+  { to: '/datasets', labelKey: 'nav.datasets', icon: 'database' },
+  { to: '/team', labelKey: 'nav.team', icon: 'users' },
+  { to: '/preferences', labelKey: 'nav.preferences', icon: 'settings' },
 ])
 
 function isActive(to?: string) {
@@ -101,7 +101,22 @@ function isActive(to?: string) {
         </p>
         <ul class="space-y-1">
           <li v-for="item in settingsItems" :key="item.labelKey">
+            <router-link
+              v-if="item.to && !item.disabled"
+              :to="item.to"
+              class="flex items-center gap-3 h-9 px-3 rounded-md text-sm font-medium transition"
+              :class="
+                isActive(item.to)
+                  ? 'bg-primary-50 text-primary-800'
+                  : 'text-ink-700 hover:bg-ink-100'
+              "
+              :title="t(item.labelKey)"
+            >
+              <span class="h-4 w-4 shrink-0 rounded-sm bg-current opacity-70" />
+              <span v-if="!ui.sidebarCollapsed">{{ t(item.labelKey) }}</span>
+            </router-link>
             <div
+              v-else
               class="flex items-center gap-3 h-9 px-3 rounded-md text-sm font-medium text-ink-400 cursor-not-allowed"
               :title="t('common.comingSoon')"
             >
