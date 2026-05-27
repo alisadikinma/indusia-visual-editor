@@ -269,6 +269,7 @@
     "languageBlurb": "Affects UI copy only. Engineering jargon (mAP, F1) stays English.",
     "engineerMode": "Engineer mode",
     "engineerBlurb": "Reveal hyperparameters, tech details, and log terminals on workflow screens.",
+    "engineerMovedHint": "Engineer mode now lives in the top bar — toggle the </> chip to enable.",
     "storedLocal": "These preferences are stored in localStorage and do not sync across devices."
   },
   "chat": {

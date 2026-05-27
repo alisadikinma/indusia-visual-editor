@@ -261,6 +261,7 @@
     "languageBlurb": "Hanya mempengaruhi teks UI. Istilah teknis (mAP, F1) tetap bahasa Inggris.",
     "engineerMode": "Mode insinyur",
     "engineerBlurb": "Tampilkan hyperparameter, detail teknis, dan terminal log di layar workflow.",
+    "engineerMovedHint": "Toggle Mode Insinyur sekarang di topbar — klik chip </> untuk mengaktifkan.",
     "storedLocal": "Preferensi ini disimpan di localStorage dan tidak sinkron antar perangkat."
   },
   "chat": {

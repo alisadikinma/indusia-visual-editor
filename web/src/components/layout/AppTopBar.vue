@@ -5,6 +5,8 @@ import { useI18n } from 'vue-i18n'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { useEngineerStore } from '@/stores/engineer'
+import AppPill from '@/components/primitives/AppPill.vue'
+import IconButton from '@/components/primitives/IconButton.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -26,18 +28,23 @@ async function doLogout() {
 
 <template>
   <header
-    class="h-16 bg-white border-b border-ink-200 flex items-center justify-between px-6 gap-4"
+    data-testid="app-topbar"
+    class="h-16 bg-surface-canvas border-b border-border-default flex items-center justify-between px-6 gap-4"
   >
     <div class="flex items-center gap-3 min-w-0">
-      <button
-        type="button"
-        class="h-8 w-8 grid place-items-center rounded-md text-ink-500 hover:bg-ink-100"
+      <IconButton
+        data-testid="topbar-sidebar-toggle"
+        variant="ghost"
+        size="sm"
         :aria-label="t('common.toggleSidebar')"
         @click="ui.toggleSidebar()"
       >
         <span class="block h-4 w-4 rounded-sm border-2 border-current" />
-      </button>
-      <nav class="flex items-center gap-2 text-sm text-ink-500 min-w-0">
+      </IconButton>
+      <nav
+        data-testid="topbar-breadcrumb"
+        class="flex items-center gap-2 text-sm text-ink-500 min-w-0"
+      >
         <span class="font-mono text-xs uppercase tracking-wider text-ink-400">
           {{ t('app.shortName') }}
         </span>
@@ -48,37 +55,34 @@ async function doLogout() {
 
     <div class="flex items-center gap-2">
       <div
-        class="inline-flex items-center rounded-full border border-ink-200 bg-ink-50 p-0.5 text-xs font-mono"
+        class="inline-flex items-center rounded-full border border-border-default bg-surface-raised p-0.5 text-xs font-mono"
       >
-        <button
-          type="button"
-          class="h-7 px-3 rounded-full transition"
-          :class="
-            ui.locale === 'en' ? 'bg-white text-ink-900 shadow-card' : 'text-ink-500'
-          "
+        <AppPill
+          data-testid="topbar-locale-en"
+          size="sm"
+          :selected="ui.locale === 'en'"
           @click="ui.setLocale('en')"
         >
           EN
-        </button>
-        <button
-          type="button"
-          class="h-7 px-3 rounded-full transition"
-          :class="
-            ui.locale === 'id' ? 'bg-white text-ink-900 shadow-card' : 'text-ink-500'
-          "
+        </AppPill>
+        <AppPill
+          data-testid="topbar-locale-id"
+          size="sm"
+          :selected="ui.locale === 'id'"
           @click="ui.setLocale('id')"
         >
           ID
-        </button>
+        </AppPill>
       </div>
 
       <button
+        data-testid="topbar-engineer-toggle"
         type="button"
         class="inline-flex items-center gap-2 h-8 px-3 rounded-full border text-xs font-mono transition"
         :class="
           engineer.enabled
             ? 'border-engineer-200 bg-engineer-50 text-engineer-800'
-            : 'border-ink-200 bg-white text-ink-500 hover:text-ink-700'
+            : 'border-border-default bg-surface-canvas text-ink-500 hover:text-ink-700'
         "
         :aria-pressed="engineer.enabled"
         @click="engineer.toggle()"
@@ -96,7 +100,7 @@ async function doLogout() {
         </span>
       </button>
 
-      <div class="h-6 w-px bg-ink-200 mx-1" />
+      <div class="h-6 w-px bg-border-default mx-1" />
 
       <div class="flex items-center gap-3">
         <div class="text-right leading-tight hidden sm:block">
@@ -108,6 +112,7 @@ async function doLogout() {
           </div>
         </div>
         <button
+          data-testid="topbar-logout"
           type="button"
           class="h-8 px-3 rounded-md text-xs font-medium text-ink-500 hover:text-ink-900 hover:bg-ink-100 transition"
           @click="doLogout"

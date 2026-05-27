@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { useUiStore } from '@/stores/ui'
 
 interface NavItem {
+  id: string
   to?: string
   labelKey: string
   icon: string
@@ -16,18 +17,18 @@ const route = useRoute()
 const ui = useUiStore()
 
 const workspaceItems = computed<NavItem[]>(() => [
-  { to: '/', labelKey: 'nav.dashboard', icon: 'grid' },
-  { labelKey: 'nav.labeling', icon: 'square-mouse-pointer', disabled: true },
-  { labelKey: 'nav.training', icon: 'cpu', disabled: true },
-  { labelKey: 'nav.eval', icon: 'gauge', disabled: true },
+  { id: 'dashboard', to: '/', labelKey: 'nav.dashboard', icon: 'grid' },
+  { id: 'labeling', labelKey: 'nav.labeling', icon: 'square-mouse-pointer', disabled: true },
+  { id: 'training', labelKey: 'nav.training', icon: 'cpu', disabled: true },
+  { id: 'eval', labelKey: 'nav.eval', icon: 'gauge', disabled: true },
 ])
 
 const settingsItems = computed<NavItem[]>(() => [
-  { to: '/models', labelKey: 'nav.models', icon: 'box' },
-  { to: '/edges', labelKey: 'nav.edges', icon: 'server' },
-  { to: '/datasets', labelKey: 'nav.datasets', icon: 'database' },
-  { to: '/team', labelKey: 'nav.team', icon: 'users' },
-  { to: '/preferences', labelKey: 'nav.preferences', icon: 'settings' },
+  { id: 'models', to: '/models', labelKey: 'nav.models', icon: 'box' },
+  { id: 'edges', to: '/edges', labelKey: 'nav.edges', icon: 'server' },
+  { id: 'datasets', to: '/datasets', labelKey: 'nav.datasets', icon: 'database' },
+  { id: 'team', to: '/team', labelKey: 'nav.team', icon: 'users' },
+  { id: 'preferences', to: '/preferences', labelKey: 'nav.preferences', icon: 'settings' },
 ])
 
 function isActive(to?: string) {
@@ -38,11 +39,14 @@ function isActive(to?: string) {
 
 <template>
   <aside
-    class="flex flex-col bg-white border-r border-ink-200 transition-all duration-200"
+    data-testid="app-sidebar"
+    :data-collapsed="ui.sidebarCollapsed ? 'true' : 'false'"
+    class="flex flex-col bg-surface-canvas border-r border-border-default transition-all duration-200"
     :class="ui.sidebarCollapsed ? 'w-16' : 'w-60'"
   >
     <div
-      class="flex items-center gap-3 h-16 px-4 border-b border-ink-200"
+      data-testid="sidebar-brand"
+      class="flex items-center gap-3 h-16 px-4 border-b border-border-default"
       :class="ui.sidebarCollapsed ? 'justify-center' : ''"
     >
       <div
@@ -57,7 +61,7 @@ function isActive(to?: string) {
     </div>
 
     <nav class="flex-1 overflow-y-auto py-4 px-2 space-y-6">
-      <div>
+      <div data-testid="sidebar-section-workspace">
         <p
           v-if="!ui.sidebarCollapsed"
           class="px-3 mb-2 text-[11px] font-mono uppercase tracking-wider text-ink-400"
@@ -65,10 +69,12 @@ function isActive(to?: string) {
           {{ t('nav.sectionWorkspace') }}
         </p>
         <ul class="space-y-1">
-          <li v-for="item in workspaceItems" :key="item.labelKey">
+          <li v-for="item in workspaceItems" :key="item.id">
             <router-link
               v-if="item.to && !item.disabled"
               :to="item.to"
+              :data-testid="`sidebar-nav-${item.id}`"
+              :data-active="isActive(item.to) ? 'true' : 'false'"
               class="flex items-center gap-3 h-9 px-3 rounded-md text-sm font-medium transition"
               :class="
                 isActive(item.to)
@@ -82,6 +88,8 @@ function isActive(to?: string) {
             </router-link>
             <div
               v-else
+              :data-testid="`sidebar-nav-${item.id}`"
+              data-disabled="true"
               class="flex items-center gap-3 h-9 px-3 rounded-md text-sm font-medium text-ink-400 cursor-not-allowed"
               :title="t('common.comingSoon')"
             >
@@ -92,7 +100,7 @@ function isActive(to?: string) {
         </ul>
       </div>
 
-      <div>
+      <div data-testid="sidebar-section-settings">
         <p
           v-if="!ui.sidebarCollapsed"
           class="px-3 mb-2 text-[11px] font-mono uppercase tracking-wider text-ink-400"
@@ -100,10 +108,12 @@ function isActive(to?: string) {
           {{ t('nav.sectionSettings') }}
         </p>
         <ul class="space-y-1">
-          <li v-for="item in settingsItems" :key="item.labelKey">
+          <li v-for="item in settingsItems" :key="item.id">
             <router-link
               v-if="item.to && !item.disabled"
               :to="item.to"
+              :data-testid="`sidebar-nav-${item.id}`"
+              :data-active="isActive(item.to) ? 'true' : 'false'"
               class="flex items-center gap-3 h-9 px-3 rounded-md text-sm font-medium transition"
               :class="
                 isActive(item.to)
@@ -117,6 +127,8 @@ function isActive(to?: string) {
             </router-link>
             <div
               v-else
+              :data-testid="`sidebar-nav-${item.id}`"
+              data-disabled="true"
               class="flex items-center gap-3 h-9 px-3 rounded-md text-sm font-medium text-ink-400 cursor-not-allowed"
               :title="t('common.comingSoon')"
             >
@@ -128,7 +140,10 @@ function isActive(to?: string) {
       </div>
     </nav>
 
-    <div class="border-t border-ink-200 p-3">
+    <div
+      data-testid="sidebar-ai-advisor"
+      class="border-t border-border-default p-3"
+    >
       <div
         class="flex items-center gap-3"
         :class="ui.sidebarCollapsed ? 'justify-center' : ''"
