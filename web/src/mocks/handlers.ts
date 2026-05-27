@@ -209,4 +209,101 @@ export const handlers = [
   http.get('/api/projects/:id/bom_items', ({ params }) => {
     return HttpResponse.json(envelope(bomDb.get(String(params.id)) ?? []))
   }),
+
+  // ───── labels ─────
+  http.get('/api/projects/:id/labels/task', ({ params, request }) => {
+    const projectId = String(params.id)
+    const side = new URL(request.url).searchParams.get('side') ?? 'top'
+    const rows = bomDb.get(projectId) ?? []
+    if (rows.length === 0) return failed('project has no bom_items', 422)
+    const designators = rows.map((r) => r.designator)
+    const labelTags = designators
+      .map((d) => `<Label value="${d}" background="#10b981" />`)
+      .join('\n')
+    const config = `<View>
+  <Image name="image" value="$image" />
+  <RectangleLabels name="region" toName="image">
+${labelTags}
+  </RectangleLabels>
+</View>`
+    // Build a sample prelabel: half the rows get a placeholder prediction
+    const samplePredictions = designators.slice(0, 4).map((d, i) => ({
+      id: `pred-${d}`,
+      type: 'rectanglelabels',
+      from_name: 'region',
+      to_name: 'image',
+      original_width: 1920,
+      original_height: 1080,
+      image_rotation: 0,
+      value: {
+        x: 10 + i * 18,
+        y: 10 + i * 12,
+        width: 8,
+        height: 6,
+        rotation: 0,
+        rectanglelabels: [d],
+      },
+    }))
+    return HttpResponse.json(
+      envelope({
+        config,
+        task: {
+          id: 1,
+          data: {
+            image:
+              'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1920&q=80',
+          },
+          predictions: [
+            {
+              id: 1,
+              model_version: 'gemma-4-prelabel',
+              result: samplePredictions,
+            },
+          ],
+          annotations: [],
+        },
+        side,
+        designator_count: designators.length,
+      }),
+    )
+  }),
+  http.post('/api/projects/:id/labels', async ({ request, params }) => {
+    const projectId = String(params.id)
+    const side = new URL(request.url).searchParams.get('side') ?? 'top'
+    const body = (await request.json()) as { ls_json?: unknown }
+    if (!body?.ls_json) return failed('payload.ls_json missing', 422)
+    return HttpResponse.json(
+      envelope(
+        {
+          id: crypto.randomUUID(),
+          project_id: projectId,
+          side,
+          version: 1,
+          snapshot_at: new Date().toISOString(),
+        },
+        'labels saved',
+      ),
+      { status: 201 },
+    )
+  }),
+  http.get('/api/projects/:id/labels', ({ params }) => {
+    return HttpResponse.json(envelope([{ project_id: String(params.id), versions: [] }]))
+  }),
+  http.post('/api/projects/:id/llm/prelabel', ({ params, request }) => {
+    const projectId = String(params.id)
+    const side = new URL(request.url).searchParams.get('side') ?? 'top'
+    return HttpResponse.json(
+      envelope(
+        {
+          id: crypto.randomUUID(),
+          project_id: projectId,
+          side,
+          regions: [],
+          created_at: new Date().toISOString(),
+        },
+        'prelabel scheduled',
+      ),
+      { status: 201 },
+    )
+  }),
 ]
