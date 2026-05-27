@@ -1,11 +1,31 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import AppButton from '@/components/primitives/AppButton.vue'
 import { useWizardStore } from '@/stores/wizard'
 import { useProjectsStore } from '@/stores/projects'
 import type { AssetKind } from '@/api/assets'
+
+const previewUrls = reactive<Partial<Record<AssetKind, string>>>({})
+const dimensions = reactive<Partial<Record<AssetKind, { w: number; h: number }>>>({})
+const fileNames = reactive<Partial<Record<AssetKind, string>>>({})
+const bottomSkipped = ref(false)
+
+function readDimensions(kind: AssetKind, url: string) {
+  const img = new Image()
+  img.onload = () => {
+    dimensions[kind] = { w: img.naturalWidth, h: img.naturalHeight }
+  }
+  img.src = url
+}
+
+function formatBytes(n: number | null | undefined): string {
+  if (n == null) return ''
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
 
 interface StepDef {
   key: 'project' | 'bom' | 'golden' | 'drawing' | 'review'
@@ -78,6 +98,18 @@ async function onFile(kind: AssetKind, e: Event) {
     wizard.error = t('wizard.errMissingProject')
     return
   }
+  if (file.type.startsWith('image/')) {
+    if (previewUrls[kind]) URL.revokeObjectURL(previewUrls[kind]!)
+    const url = URL.createObjectURL(file)
+    previewUrls[kind] = url
+    fileNames[kind] = file.name
+    delete dimensions[kind]
+    readDimensions(kind, url)
+  } else {
+    fileNames[kind] = file.name
+  }
+  // User explicitly uploaded the bottom — clear any prior skip.
+  if (kind === 'golden_bottom') bottomSkipped.value = false
   try {
     await wizard.uploadAsset(kind, file)
   } catch {
@@ -86,6 +118,12 @@ async function onFile(kind: AssetKind, e: Event) {
     input.value = ''
   }
 }
+
+onUnmounted(() => {
+  for (const url of Object.values(previewUrls)) {
+    if (url) URL.revokeObjectURL(url)
+  }
+})
 
 const assetName = (kind: AssetKind): string | null => {
   const a = wizard.assets[kind]
@@ -275,28 +313,171 @@ const assetName = (kind: AssetKind): string | null => {
       </div>
 
       <!-- Step 3: golden samples -->
-      <div v-else-if="current.key === 'golden'" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <label
-          v-for="side in [
-            { kind: 'golden_top' as AssetKind, labelKey: 'wizard.goldenTop' },
-            { kind: 'golden_bottom' as AssetKind, labelKey: 'wizard.goldenBottom' },
-          ]"
-          :key="side.kind"
-          class="flex flex-col items-center justify-center min-h-40 border-2 border-dashed border-ink-300 rounded-xl bg-ink-50 px-6 py-8 cursor-pointer hover:border-primary-400 transition"
-          :class="wizard.busy ? 'opacity-60 pointer-events-none' : ''"
+      <div v-else-if="current.key === 'golden'" class="space-y-5">
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr_280px] gap-4">
+          <!-- Card per side: Top, Bottom -->
+          <label
+            v-for="side in [
+              {
+                kind: 'golden_top' as AssetKind,
+                labelKey: 'wizard.goldenTop',
+                dropKey: 'wizard.goldenDropTop',
+              },
+              {
+                kind: 'golden_bottom' as AssetKind,
+                labelKey: 'wizard.goldenBottom',
+                dropKey: 'wizard.goldenDropBottom',
+              },
+            ]"
+            :key="side.kind"
+            class="group relative flex flex-col rounded-xl px-4 py-5 cursor-pointer transition min-h-[280px]"
+            :class="[
+              wizard.assets[side.kind]
+                ? 'bg-primary-50 border-2 border-primary-500'
+                : 'bg-white border-2 border-dashed border-ink-300 hover:border-primary-400',
+              wizard.busy ? 'opacity-60 pointer-events-none' : '',
+            ]"
+          >
+            <!-- Uploaded state: image preview + filename + size + dims + replace hint -->
+            <template v-if="wizard.assets[side.kind]">
+              <div
+                class="flex-1 rounded-lg overflow-hidden bg-ink-900 grid place-items-center min-h-[140px] relative"
+              >
+                <img
+                  v-if="previewUrls[side.kind]"
+                  :src="previewUrls[side.kind]"
+                  :alt="t(side.labelKey)"
+                  class="h-full w-full object-contain"
+                />
+                <span
+                  v-else
+                  class="text-[10px] font-mono uppercase tracking-wider text-ink-300"
+                >
+                  {{ t(side.labelKey) }}
+                </span>
+                <span
+                  class="absolute bottom-2 right-2 text-[10px] font-mono uppercase tracking-wider text-primary-300/80"
+                >
+                  {{ side.kind === 'golden_top' ? 'TOP' : 'BOTTOM' }}
+                </span>
+              </div>
+              <div class="mt-3 flex flex-col items-center text-center">
+                <span
+                  class="h-6 w-6 grid place-items-center rounded-full bg-primary-600 text-white text-xs"
+                  >✓</span
+                >
+                <span class="mt-1.5 text-sm font-medium text-ink-900 font-mono truncate max-w-full">
+                  {{ fileNames[side.kind] ?? assetName(side.kind) }}
+                  <span v-if="wizard.assets[side.kind]?.size_bytes" class="text-ink-500">
+                    · {{ formatBytes(wizard.assets[side.kind]!.size_bytes) }}
+                  </span>
+                </span>
+                <span class="text-xs text-primary-700 mt-0.5">
+                  <template v-if="dimensions[side.kind]">
+                    Uploaded · {{ dimensions[side.kind]!.w }}×{{ dimensions[side.kind]!.h }} px
+                  </template>
+                  <template v-else>Uploaded</template>
+                </span>
+                <span class="mt-2 text-[11px] text-ink-500 opacity-0 group-hover:opacity-100 transition">
+                  {{ t('wizard.replaceImage') }}
+                </span>
+              </div>
+            </template>
+
+            <!-- Empty state: arrow icon + drop hint + file format hint -->
+            <template v-else>
+              <div class="flex-1 grid place-items-center">
+                <div class="flex flex-col items-center text-center">
+                  <span
+                    class="h-12 w-12 grid place-items-center rounded-full bg-ink-100 text-ink-500 text-xl mb-3"
+                    >↑</span
+                  >
+                  <span class="text-sm font-medium text-ink-700">{{ t(side.dropKey) }}</span>
+                  <span class="mt-1 text-xs text-ink-500 max-w-[200px]">
+                    {{ t('wizard.goldenFileHint') }}
+                  </span>
+                </div>
+              </div>
+            </template>
+
+            <input
+              type="file"
+              accept="image/*"
+              class="hidden"
+              @change="onFile(side.kind, $event)"
+            />
+          </label>
+
+          <!-- Photo tips sidebar -->
+          <aside
+            class="rounded-xl border border-ink-200 bg-white px-4 py-4 space-y-3 self-start"
+          >
+            <h3 class="text-[11px] font-mono uppercase tracking-wider text-ink-500">
+              {{ t('wizard.photoTipsTitle') }}
+            </h3>
+            <ol class="space-y-3">
+              <li
+                v-for="n in [1, 2, 3, 4]"
+                :key="n"
+                class="flex items-start gap-2.5"
+              >
+                <span
+                  class="h-5 w-5 shrink-0 grid place-items-center rounded-full border border-ink-300 text-[10px] font-mono text-ink-600"
+                >
+                  {{ n }}
+                </span>
+                <div class="flex-1 min-w-0">
+                  <p class="text-[13px] font-medium text-ink-900 leading-tight">
+                    {{ t(`wizard.photoTip${n}Title`) }}
+                  </p>
+                  <p class="mt-0.5 text-xs text-ink-500 leading-snug">
+                    {{ t(`wizard.photoTip${n}Body`) }}
+                  </p>
+                </div>
+              </li>
+            </ol>
+          </aside>
+        </div>
+
+        <!-- Amber warning bar: bottom missing + Skip CTA -->
+        <div
+          v-if="wizard.assets.golden_top && !wizard.assets.golden_bottom && !bottomSkipped"
+          class="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3"
         >
-          <span class="text-sm font-medium text-ink-700">{{ t(side.labelKey) }}</span>
-          <span class="mt-1 text-xs text-ink-500">.jpg / .png · ≥1920px</span>
-          <span v-if="assetName(side.kind)" class="mt-3 text-xs font-mono text-primary-700">
-            ✓ {{ assetName(side.kind) }}
+          <span class="text-lg leading-none mt-0.5">⚠️</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold text-amber-900">
+              {{ t('wizard.goldenBottomMissingTitle') }}
+            </p>
+            <p class="mt-0.5 text-xs text-amber-800 leading-snug">
+              {{ t('wizard.goldenBottomMissingDetail') }}
+            </p>
+          </div>
+          <button
+            type="button"
+            class="shrink-0 h-9 px-3 rounded-lg bg-white border border-amber-300 text-sm font-medium text-amber-900 hover:bg-amber-100 transition"
+            @click="bottomSkipped = true"
+          >
+            {{ t('wizard.goldenSkipBottom') }}
+          </button>
+        </div>
+
+        <!-- Skip-acknowledged hint with undo -->
+        <div
+          v-else-if="wizard.assets.golden_top && !wizard.assets.golden_bottom && bottomSkipped"
+          class="flex items-center gap-3 rounded-xl bg-ink-50 border border-ink-200 px-4 py-2.5 text-xs text-ink-600"
+        >
+          <span>
+            {{ t('wizard.goldenBottomOptional') }}
           </span>
-          <input
-            type="file"
-            accept="image/*"
-            class="hidden"
-            @change="onFile(side.kind, $event)"
-          />
-        </label>
+          <button
+            type="button"
+            class="ml-auto font-medium text-primary-700 hover:underline"
+            @click="bottomSkipped = false"
+          >
+            {{ t('wizard.goldenSkipUndo') }}
+          </button>
+        </div>
       </div>
 
       <!-- Step 4: drawing -->
@@ -373,10 +554,17 @@ const assetName = (kind: AssetKind): string | null => {
     </section>
 
     <footer class="mt-6 flex items-center justify-between">
-      <AppButton variant="ghost" :disabled="wizard.isFirst || wizard.busy" @click="wizard.back()">
-        ← {{ t('common.back') }}
+      <AppButton
+        variant="ghost"
+        :disabled="wizard.busy"
+        @click="router.push({ name: 'dashboard' })"
+      >
+        {{ t('wizard.cancel') }}
       </AppButton>
       <div class="flex items-center gap-3">
+        <AppButton variant="ghost" :disabled="wizard.isFirst || wizard.busy" @click="wizard.back()">
+          ← {{ t('common.back') }}
+        </AppButton>
         <span class="text-xs font-mono text-ink-500">
           {{ stepIndex + 1 }} / {{ STEPS.length }}
         </span>

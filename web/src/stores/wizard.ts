@@ -49,7 +49,10 @@ export const useWizardStore = defineStore('wizard', () => {
       case 'bom':
         return assets.value.bom != null
       case 'golden':
-        return assets.value.golden_top != null && assets.value.golden_bottom != null
+        // Top side mandatory, bottom side optional. Most single-side
+        // PCBs (LED strips, simple sensor boards) have no through-hole
+        // components on the bottom to inspect.
+        return assets.value.golden_top != null
       case 'drawing':
         return assets.value.drawing != null
       case 'review':
