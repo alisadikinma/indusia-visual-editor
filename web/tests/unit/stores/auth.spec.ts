@@ -21,7 +21,7 @@ describe('auth store', () => {
     expect(localStorage.getItem('ive.access_token')).toBe('abc')
   })
 
-  it('clears token + user on logout', () => {
+  it('clears token + user on logout', async () => {
     const auth = useAuthStore()
     auth.setToken('abc')
     auth.setUser({
@@ -30,7 +30,7 @@ describe('auth store', () => {
       role: 'admin',
       organization_id: 'org',
     })
-    auth.logout()
+    await auth.logout()
     expect(auth.isAuthenticated).toBe(false)
     expect(auth.user).toBeNull()
     expect(localStorage.getItem('ive.access_token')).toBeNull()
