@@ -21,6 +21,11 @@ export default {
           800: '#065f46',
           900: '#064e3b',
           950: '#022c22',
+          // Figma Foundations semantic states (frame 2:74 "Primary")
+          base: '#10b981',
+          hover: '#059669',
+          pressed: '#047857',
+          subtle: '#ecfdf5',
         },
         engineer: {
           50: '#faf5ff',
@@ -47,10 +52,42 @@ export default {
           900: '#0f172a',
           950: '#020617',
         },
+        // Figma Foundations semantic surfaces (frame 2:9 "Surface")
+        surface: {
+          canvas: '#ffffff',
+          raised: '#f8fafc',
+          sunken: '#f1f5f9',
+          inverse: '#0f172a',
+          overlay: 'rgb(15 23 42 / 0.6)',
+        },
+        // Figma Foundations semantic text colors (frame 2:32 "Text")
+        text: {
+          primary: '#0f172a',
+          secondary: '#475569',
+          tertiary: '#64748b',
+          inverse: '#f8fafc',
+          onPrimary: '#ffffff',
+        },
+        // Figma Foundations semantic borders (frame 2:55 "Border")
+        border: {
+          subtle: '#f1f5f9',
+          default: '#e2e8f0',
+          strong: '#cbd5e1',
+          focus: '#10b981',
+        },
+        // Flat status tokens (existing call sites) — preserved
         success: '#16a34a',
         warning: '#d97706',
         danger: '#dc2626',
         info: '#2563eb',
+        // Figma Foundations status semantic (frames 2:93/2:104/2:115/2:126/2:137)
+        status: {
+          success: { base: '#16a34a', subtle: '#dcfce7' },
+          warning: { base: '#d97706', subtle: '#fef3c7' },
+          danger: { base: '#dc2626', subtle: '#fee2e2' },
+          info: { base: '#2563eb', subtle: '#dbeafe' },
+          neutral: { base: '#64748b', subtle: '#f1f5f9' },
+        },
       },
       borderRadius: {
         xs: '2px',
