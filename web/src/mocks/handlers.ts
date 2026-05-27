@@ -101,6 +101,79 @@ function delay(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
+interface MockTrainRun {
+  id: string
+  project_id: string
+  adapt_run_id: string
+  service_job_id: string
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+  metrics_json: Record<string, unknown> | null
+  started_at: string
+  ended_at: string | null
+  error_text: string | null
+}
+
+const trainRunsDb: MockTrainRun[] = []
+
+function sampleStats() {
+  const designators = ['R1', 'R2', 'C1', 'C4', 'U1', 'U7', 'J1', 'J5', 'D1', 'D2']
+  const per = designators.map((d, i) => {
+    const count = 18 + (i % 4) * 6
+    const bucket = count >= 30 ? 'sufficient' : count >= 18 ? 'moderate' : 'at_risk'
+    return { designator: d, count, bucket: bucket as 'sufficient' | 'moderate' | 'at_risk' }
+  })
+  return {
+    total_regions: per.reduce((a, p) => a + p.count, 0),
+    per_designator: per,
+    coverage_ratio: 0.95,
+    side_breakdown: { top: per.length * 8, bottom: per.length * 4 },
+  }
+}
+
+function sampleEval(runId: string) {
+  const designators = ['R1', 'R2', 'C1', 'C4', 'U1', 'U7', 'J1', 'J5', 'D1', 'D2']
+  const per_component = designators.map((d, i) => {
+    // J5 fails per spec example
+    const f1 = d === 'J5' ? 0.63 : 0.78 + (i % 3) * 0.04
+    const precision = f1 + 0.02
+    const recall = f1 - 0.02
+    return {
+      designator: d,
+      f1,
+      precision,
+      recall,
+      support: 12 + (i % 3) * 4,
+      pass: f1 >= 0.7,
+    }
+  })
+  const predictions = designators.flatMap((d, i) => {
+    const status = i % 4 === 0 ? 'fp' : i % 5 === 0 ? 'fn' : 'tp'
+    return [
+      {
+        id: `pred-${d}-${i}`,
+        designator: d,
+        status: status as 'tp' | 'fp' | 'fn' | 'tn',
+        confidence: 0.65 + (i % 4) * 0.1,
+        thumbnail_url: null,
+      },
+    ]
+  })
+  return {
+    run_id: runId,
+    metrics: {
+      map: 0.83,
+      f1_macro: 0.78,
+      precision_macro: 0.81,
+      recall_macro: 0.75,
+      per_component,
+      false_positives: predictions.filter((p) => p.status === 'fp').length,
+      false_negatives: predictions.filter((p) => p.status === 'fn').length,
+    },
+    predictions,
+    prev_metrics: null,
+  }
+}
+
 export const handlers = [
   // ───── auth ─────
   http.post('/api/auth/login', async ({ request }) => {
@@ -289,6 +362,111 @@ ${labelTags}
   http.get('/api/projects/:id/labels', ({ params }) => {
     return HttpResponse.json(envelope([{ project_id: String(params.id), versions: [] }]))
   }),
+  // ───── training ─────
+  http.get('/api/projects/:id/dataset/stats', () => HttpResponse.json(envelope(sampleStats()))),
+  http.post('/api/projects/:id/training/suggest-hyperparams', ({ params, request }) => {
+    const projectId = String(params.id)
+    const side = (new URL(request.url).searchParams.get('side') ?? 'top') as 'top' | 'bottom'
+    return HttpResponse.json(
+      envelope({
+        project_id: projectId,
+        side,
+        stats: sampleStats(),
+        hyperparameters: {
+          epochs: 30,
+          batch_size: 32,
+          learning_rate: 0.001,
+          augmentation_intensity: 'medium' as const,
+          early_stopping_patience: 5,
+          grounding_source: 'Gemma 4 · 31b · grounding 47 rows',
+        },
+      }),
+    )
+  }),
+  http.post('/api/projects/:id/training/start', ({ params }) => {
+    const projectId = String(params.id)
+    const run = {
+      id: crypto.randomUUID(),
+      project_id: projectId,
+      adapt_run_id: crypto.randomUUID(),
+      service_job_id: 'svc-' + Math.random().toString(36).slice(2, 10),
+      status: 'pending' as const,
+      metrics_json: null,
+      started_at: new Date().toISOString(),
+      ended_at: null,
+      error_text: null,
+    }
+    trainRunsDb.unshift(run)
+    return HttpResponse.json(envelope(run, 'training started'), { status: 201 })
+  }),
+  http.get('/api/projects/:id/training', ({ params }) => {
+    const projectId = String(params.id)
+    return HttpResponse.json(
+      envelope(trainRunsDb.filter((r) => r.project_id === projectId)),
+    )
+  }),
+
+  // SSE: compose a quick scripted stream. EventSource hits this URL.
+  http.get('/api/training/:runId/stream', ({ params }) => {
+    const runId = String(params.runId)
+    const encoder = new TextEncoder()
+    const designators = ['R1', 'R2', 'C1', 'C4', 'U1', 'U7', 'J1', 'J5', 'D1', 'D2']
+    const totalEpochs = 30
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        function send(payload: Record<string, unknown>) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(payload)}\n\n`))
+        }
+        send({ event: 'running' })
+        for (let epoch = 1; epoch <= totalEpochs; epoch++) {
+          await delay(150)
+          const perComp = designators.map((d, i) => {
+            const ratio = epoch / totalEpochs
+            const threshold = (i + 1) / designators.length
+            const state = ratio >= threshold ? 'done' : ratio >= threshold - 0.1 ? 'training' : 'queued'
+            return { designator: d, state }
+          })
+          send({
+            event: 'epoch',
+            epoch,
+            total_epochs: totalEpochs,
+            loss: 0.95 - epoch * 0.02,
+            map: Math.min(0.95, 0.4 + epoch * 0.02),
+            f1: Math.min(0.95, 0.42 + epoch * 0.018),
+            precision: Math.min(0.95, 0.45 + epoch * 0.017),
+            recall: Math.min(0.95, 0.4 + epoch * 0.019),
+            eta_seconds: Math.max(0, (totalEpochs - epoch) * 24),
+            gpu_mem_used_gb: 18.4,
+            gpu_mem_total_gb: 24,
+            log_line: `[epoch ${epoch}/${totalEpochs}] loss=${(0.95 - epoch * 0.02).toFixed(4)} mAP=${(0.4 + epoch * 0.02).toFixed(4)}`,
+            per_component: perComp,
+          })
+        }
+        await delay(150)
+        send({
+          event: 'succeeded',
+          run_id: runId,
+          metrics: { map: 0.87, f1_macro: 0.84 },
+        })
+        controller.close()
+      },
+    })
+    return new HttpResponse(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    })
+  }),
+
+  // ───── eval ─────
+  http.get('/api/training/:runId/eval', ({ params }) => {
+    const runId = String(params.runId)
+    return HttpResponse.json(envelope(sampleEval(runId)))
+  }),
+
   http.post('/api/projects/:id/llm/prelabel', ({ params, request }) => {
     const projectId = String(params.id)
     const side = new URL(request.url).searchParams.get('side') ?? 'top'

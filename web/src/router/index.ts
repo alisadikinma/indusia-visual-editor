@@ -49,6 +49,12 @@ const routes: RouteRecordRaw[] = [
     meta: { titleKey: 'nav.training' },
   },
   {
+    path: '/projects/:id/setup-eval/:runId',
+    name: 'setup-eval',
+    component: () => import('@/views/SetupEvalView.vue'),
+    meta: { titleKey: 'nav.setupEval' },
+  },
+  {
     path: '/projects/:id/eval/:runId',
     name: 'eval',
     component: () => import('@/views/EvalView.vue'),
