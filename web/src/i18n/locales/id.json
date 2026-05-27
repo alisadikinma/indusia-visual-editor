@@ -118,7 +118,18 @@
     "drawingNote": "Hanya JPG / PNG · Gerber dan ODB++ di luar lingkup v1",
     "drawingRequired": "Gambar wajib diisi sebelum pelabelan bisa dimulai.",
     "reviewNote": "Lanjut ke pelabelan — Anda bisa upload ulang aset kapan saja dari kanvas.",
-    "finish": "Lanjut ke pelabelan"
+    "finish": "Lanjut ke pelabelan",
+    "projectCreated": "Proyek dibuat.",
+    "errMissingProject": "Buat proyek dulu sebelum upload file.",
+    "bomUploadedAwaitingParse": "BOM ter-upload — sedang di-parse di server…",
+    "bomPreviewTitle": "Pratinjau BOM · {n} baris",
+    "bomRowCount": "Jumlah baris BOM",
+    "bomTruncated": "Menampilkan {shown} dari {total} baris.",
+    "colDesignator": "Designator",
+    "colValue": "Nilai",
+    "colPackage": "Package",
+    "colQty": "Qty",
+    "colMi": "MI"
   },
   "engineer": {
     "toggle": "Insinyur",

@@ -1,0 +1,47 @@
+import { apiClient } from './client'
+
+export type AssetKind = 'bom' | 'golden_top' | 'golden_bottom' | 'drawing'
+
+export interface Asset {
+  id: string
+  project_id: string
+  kind: AssetKind
+  path: string
+  sha256: string
+  mime: string | null
+  size_bytes: number | null
+  uploaded_at: string
+}
+
+interface Envelope<T> {
+  status: boolean
+  message: string
+  data: T
+}
+
+export async function uploadAsset(
+  projectId: string,
+  kind: AssetKind,
+  file: File,
+): Promise<Asset> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await apiClient.post<Envelope<Asset>>(
+    `/projects/${projectId}/assets`,
+    form,
+    {
+      params: { kind },
+      headers: { 'Content-Type': 'multipart/form-data' },
+    },
+  )
+  return data.data
+}
+
+export async function listAssets(projectId: string): Promise<Asset[]> {
+  const { data } = await apiClient.get<Envelope<Asset[]>>(`/projects/${projectId}/assets`)
+  return data.data
+}
+
+export function assetBinaryUrl(projectId: string, assetId: string): string {
+  return `/api/projects/${projectId}/assets/${assetId}/binary`
+}

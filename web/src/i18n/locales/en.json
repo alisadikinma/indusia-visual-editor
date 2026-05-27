@@ -118,7 +118,18 @@
     "drawingNote": "JPG / PNG only · Gerber and ODB++ are out of scope in v1",
     "drawingRequired": "Drawing is required before labeling can start.",
     "reviewNote": "Continue to labeling — you can re-upload assets anytime from the canvas.",
-    "finish": "Continue to labeling"
+    "finish": "Continue to labeling",
+    "projectCreated": "Project created.",
+    "errMissingProject": "Create the project first before uploading files.",
+    "bomUploadedAwaitingParse": "BOM uploaded — parsing on the server…",
+    "bomPreviewTitle": "BOM preview · {n} rows",
+    "bomRowCount": "BOM rows",
+    "bomTruncated": "Showing first {shown} of {total} rows.",
+    "colDesignator": "Designator",
+    "colValue": "Value",
+    "colPackage": "Package",
+    "colQty": "Qty",
+    "colMi": "MI"
   },
   "engineer": {
     "toggle": "Engineer",

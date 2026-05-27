@@ -70,8 +70,6 @@ function formatDate(iso: string): string {
 const greetingName = computed(() => auth.user?.email?.split('@')[0] ?? '')
 
 async function startNewProject() {
-  // Provisional: route to wizard with a placeholder project id placeholder
-  // Real flow lands in F3 wizard step 1 (create project) — for now jump straight in
   await router.push({ name: 'wizard', params: { id: 'new' } })
 }
 

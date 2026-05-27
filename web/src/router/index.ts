@@ -21,6 +21,10 @@ const routes: RouteRecordRaw[] = [
     meta: { titleKey: 'nav.dashboard' },
   },
   {
+    path: '/projects/new',
+    redirect: '/projects/new/wizard',
+  },
+  {
     path: '/projects/:id/wizard',
     name: 'wizard',
     component: () => import('@/views/WizardView.vue'),
