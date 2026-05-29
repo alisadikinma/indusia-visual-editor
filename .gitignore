@@ -91,3 +91,7 @@ docker-compose.override.yml
 *.bak
 *.tmp
 *.orig
+
+# --- graphify (local graph-generation tool — output not tracked) ---
+graphify-out/
+.graphifyignore
