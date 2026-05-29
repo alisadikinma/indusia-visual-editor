@@ -4,21 +4,41 @@ import { setLocale as setI18nLocale } from '@/i18n'
 
 const LOCALE_KEY = 'ive.locale'
 const SIDEBAR_KEY = 'ive.sidebar_collapsed'
+const THEME_KEY = 'ive.theme'
 
 export type Locale = 'en' | 'id'
+export type Theme = 'light' | 'dark'
+
+function applyTheme(theme: Theme) {
+  if (typeof document === 'undefined') return
+  document.documentElement.classList.toggle('dark', theme === 'dark')
+}
 
 export const useUiStore = defineStore('ui', () => {
+  const hasStorage = typeof localStorage !== 'undefined'
+
   const initialLocale: Locale =
-    typeof localStorage !== 'undefined' && localStorage.getItem(LOCALE_KEY) === 'id' ? 'id' : 'en'
-  const initialCollapsed =
-    typeof localStorage !== 'undefined' && localStorage.getItem(SIDEBAR_KEY) === 'true'
+    hasStorage && localStorage.getItem(LOCALE_KEY) === 'id' ? 'id' : 'en'
+  const initialCollapsed = hasStorage && localStorage.getItem(SIDEBAR_KEY) === 'true'
+  const initialTheme: Theme =
+    hasStorage && localStorage.getItem(THEME_KEY) === 'dark' ? 'dark' : 'light'
 
   const locale = ref<Locale>(initialLocale)
   const sidebarCollapsed = ref<boolean>(initialCollapsed)
+  const theme = ref<Theme>(initialTheme)
+
+  // Reflect the persisted theme onto <html> as soon as the store mounts.
+  applyTheme(theme.value)
 
   watch(sidebarCollapsed, (next) => {
-    if (typeof localStorage === 'undefined') return
+    if (!hasStorage) return
     localStorage.setItem(SIDEBAR_KEY, String(next))
+  })
+
+  watch(theme, (next) => {
+    applyTheme(next)
+    if (!hasStorage) return
+    localStorage.setItem(THEME_KEY, next)
   })
 
   function setLocale(next: Locale) {
@@ -30,5 +50,21 @@ export const useUiStore = defineStore('ui', () => {
     sidebarCollapsed.value = !sidebarCollapsed.value
   }
 
-  return { locale, sidebarCollapsed, setLocale, toggleSidebar }
+  function setTheme(next: Theme) {
+    theme.value = next
+  }
+
+  function toggleTheme() {
+    theme.value = theme.value === 'dark' ? 'light' : 'dark'
+  }
+
+  return {
+    locale,
+    sidebarCollapsed,
+    theme,
+    setLocale,
+    toggleSidebar,
+    setTheme,
+    toggleTheme,
+  }
 })

@@ -2,128 +2,355 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import AppButton from '@/components/primitives/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
+import AuthFloatingWidget from '@/components/auth/AuthFloatingWidget.vue'
 
 const { t } = useI18n()
 const router = useRouter()
 const auth = useAuthStore()
 
+const fullName = ref('')
 const email = ref('')
 const password = ref('')
 const confirm = ref('')
-const orgSlug = ref('')
-const mismatch = ref(false)
+const agreed = ref(false)
+const showPassword = ref(false)
+const localError = ref<string | null>(null)
+
+const workflow = [
+  { n: '1', title: 'auth.step1Title', sub: 'auth.step1Sub' },
+  { n: '2', title: 'auth.step2Title', sub: 'auth.step2Sub' },
+  { n: '3', title: 'auth.step3Title', sub: 'auth.step3Sub' },
+]
 
 async function submit() {
   auth.clearError()
-  mismatch.value = false
-  if (password.value !== confirm.value) {
-    mismatch.value = true
+  localError.value = null
+
+  if (!agreed.value) {
+    localError.value = t('auth.tncAgree')
     return
   }
+  // Plan + existing contract require a password-mismatch guard even though the
+  // Figma form shows a single password field (documented divergence).
+  if (password.value !== confirm.value) {
+    localError.value = t('auth.passwordMismatch')
+    return
+  }
+
   try {
-    await auth.signup(email.value, password.value, orgSlug.value || undefined)
+    await auth.signup(email.value, password.value)
+    // The backend has no name field; persist the operator's full name as a
+    // client-only display name (topbar/avatar).
+    if (fullName.value.trim()) auth.setDisplayName(fullName.value.trim())
     await router.push('/')
   } catch {
-    /* error in auth.error */
+    /* server error surfaced via auth.error */
   }
 }
 </script>
 
 <template>
-  <main class="min-h-screen grid grid-cols-1 md:grid-cols-2 bg-ink-50">
+  <main
+    class="relative flex min-h-screen bg-surface-raised dark:bg-ink-950"
+    data-testid="signup-screen"
+  >
+    <AuthFloatingWidget />
+
+    <!-- Brand panel -->
     <aside
-      class="hidden md:flex flex-col justify-between p-12 bg-gradient-to-br from-primary-700 to-primary-800 text-white"
+      data-testid="signup-brand-panel"
+      class="hidden w-[44%] max-w-[640px] flex-col justify-between overflow-hidden bg-primary-600 p-16 text-white lg:flex"
     >
-      <div>
-        <div class="text-sm font-mono tracking-wider opacity-80">INDUSIA</div>
-        <h1 class="mt-2 text-3xl font-semibold leading-tight">
-          {{ t('auth.signupHook') }}
-        </h1>
+      <div class="flex items-center gap-3">
+        <span
+          class="flex h-9 w-9 items-center justify-center rounded-lg bg-white/15 text-base font-bold"
+          aria-hidden="true"
+        >
+          ◆
+        </span>
+        <span class="text-[17px] font-bold">Indusia Visual Editor</span>
       </div>
-      <ul class="space-y-3 text-sm text-white/85">
-        <li>· {{ t('auth.signupBullet1') }}</li>
-        <li>· {{ t('auth.signupBullet2') }}</li>
-        <li>· {{ t('auth.signupBullet3') }}</li>
-      </ul>
-      <p class="text-xs text-white/60 font-mono">{{ t('auth.tenantNote') }}</p>
+
+      <div class="flex flex-col gap-4">
+        <h1 class="max-w-[512px] text-[38px] font-bold leading-[48px]">
+          {{ t('auth.signupBrandHook') }}
+        </h1>
+        <p class="max-w-[512px] text-base leading-[26px] text-primary-100">
+          {{ t('auth.signupBrandSub') }}
+        </p>
+
+        <div class="flex gap-10 pt-8">
+          <div class="flex flex-col gap-1">
+            <span class="text-[32px] font-bold leading-none">6</span>
+            <span class="text-[11px] font-semibold uppercase tracking-[0.88px] text-primary-200">
+              {{ t('auth.statSetupLabel') }}
+            </span>
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-[32px] font-bold leading-none">94.2%</span>
+            <span class="text-[11px] font-semibold uppercase tracking-[0.88px] text-primary-200">
+              {{ t('auth.statMapLabel') }}
+            </span>
+          </div>
+          <div class="flex flex-col gap-1">
+            <span class="text-[32px] font-bold leading-none">2</span>
+            <span class="text-[11px] font-semibold uppercase tracking-[0.88px] text-primary-200">
+              {{ t('auth.statGatesLabel') }}
+            </span>
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-3 pt-1">
+          <div
+            v-for="step in workflow"
+            :key="step.n"
+            data-testid="signup-workflow-step"
+            class="flex items-center gap-3.5"
+          >
+            <span
+              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-2xl border border-white bg-white/[0.18] text-sm font-bold"
+            >
+              {{ step.n }}
+            </span>
+            <div class="flex flex-col gap-0.5">
+              <span class="text-sm font-semibold">{{ t(step.title) }}</span>
+              <span class="text-xs text-primary-200">{{ t(step.sub) }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="text-xs text-primary-200">© 2026 Indusia AI · indusiaai@gmail.com</p>
     </aside>
 
-    <section class="flex items-center justify-center px-6 py-12">
-      <form class="w-full max-w-md space-y-5" @submit.prevent="submit">
-        <header class="space-y-1">
-          <h2 class="text-2xl font-semibold text-ink-900">{{ t('auth.signupTitle') }}</h2>
-          <p class="text-sm text-ink-500">{{ t('auth.signupSubtitle') }}</p>
-        </header>
+    <!-- Form panel -->
+    <section class="flex flex-1 items-center justify-center px-6 py-14 sm:px-24">
+      <form
+        data-testid="signup-form"
+        class="flex w-full max-w-[400px] flex-col gap-[18px]"
+        @submit.prevent="submit"
+      >
+        <div class="flex flex-col gap-2">
+          <h2 class="text-[26px] font-bold text-text-primary dark:text-ink-50">
+            {{ t('auth.signupHeading') }}
+          </h2>
+          <p class="text-sm text-text-secondary dark:text-ink-400">{{ t('auth.signupHint') }}</p>
+        </div>
 
-        <label class="block space-y-1.5">
-          <span class="text-sm font-medium text-ink-700">{{ t('auth.email') }}</span>
-          <input
-            v-model="email"
-            type="email"
-            autocomplete="email"
-            required
-            class="w-full h-11 px-3 rounded-lg border border-ink-200 bg-white focus:border-primary-600 focus:ring-2 focus:ring-primary-100 outline-none transition"
-          />
+        <label class="flex flex-col gap-1.5">
+          <span class="text-[13px] font-medium text-text-secondary dark:text-ink-300">
+            {{ t('auth.fullName') }}
+          </span>
+          <span
+            class="flex h-11 items-center gap-2.5 rounded-lg border border-border-default bg-surface-canvas px-3.5 transition focus-within:border-2 focus-within:border-border-focus dark:border-ink-700 dark:bg-ink-900"
+          >
+            <svg
+              class="h-4 w-4 shrink-0 text-text-tertiary"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="8" r="4" />
+              <path d="M4 20a8 8 0 0 1 16 0" />
+            </svg>
+            <input
+              v-model="fullName"
+              name="fullName"
+              type="text"
+              autocomplete="name"
+              required
+              :placeholder="t('auth.fullNamePlaceholder')"
+              class="w-full bg-transparent text-sm text-text-primary outline-none placeholder:text-text-tertiary dark:text-ink-50"
+            />
+          </span>
         </label>
 
-        <label class="block space-y-1.5">
-          <span class="text-sm font-medium text-ink-700">{{ t('auth.password') }}</span>
-          <input
-            v-model="password"
-            type="password"
-            autocomplete="new-password"
-            required
-            minlength="8"
-            class="w-full h-11 px-3 rounded-lg border border-ink-200 bg-white focus:border-primary-600 focus:ring-2 focus:ring-primary-100 outline-none transition"
-          />
+        <label class="flex flex-col gap-1.5">
+          <span class="text-[13px] font-medium text-text-secondary dark:text-ink-300">
+            {{ t('auth.workEmail') }}
+          </span>
+          <span
+            class="flex h-11 items-center gap-2.5 rounded-lg border border-border-default bg-surface-canvas px-3.5 transition focus-within:border-2 focus-within:border-border-focus dark:border-ink-700 dark:bg-ink-900"
+          >
+            <svg
+              class="h-4 w-4 shrink-0 text-text-tertiary"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <path d="m3 7 9 6 9-6" />
+            </svg>
+            <input
+              v-model="email"
+              name="email"
+              type="email"
+              autocomplete="email"
+              required
+              :placeholder="t('auth.workEmailPlaceholder')"
+              class="w-full bg-transparent text-sm text-text-primary outline-none placeholder:text-text-tertiary dark:text-ink-50"
+            />
+          </span>
         </label>
 
-        <label class="block space-y-1.5">
-          <span class="text-sm font-medium text-ink-700">{{ t('auth.passwordConfirm') }}</span>
-          <input
-            v-model="confirm"
-            type="password"
-            autocomplete="new-password"
-            required
-            class="w-full h-11 px-3 rounded-lg border border-ink-200 bg-white focus:border-primary-600 focus:ring-2 focus:ring-primary-100 outline-none transition"
-          />
+        <label class="flex flex-col gap-1.5">
+          <span class="text-[13px] font-medium text-text-secondary dark:text-ink-300">
+            {{ t('auth.password') }}
+          </span>
+          <span
+            class="flex h-11 items-center gap-2.5 rounded-lg border border-border-default bg-surface-canvas px-3.5 transition focus-within:border-2 focus-within:border-border-focus dark:border-ink-700 dark:bg-ink-900"
+          >
+            <svg
+              class="h-4 w-4 shrink-0 text-text-tertiary"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="4" y="11" width="16" height="9" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+            <input
+              v-model="password"
+              name="password"
+              :type="showPassword ? 'text' : 'password'"
+              autocomplete="new-password"
+              required
+              minlength="12"
+              :placeholder="t('auth.passwordMinHint')"
+              class="w-full bg-transparent text-sm text-text-primary outline-none placeholder:text-text-tertiary dark:text-ink-50"
+            />
+            <button
+              data-testid="signup-toggle-password"
+              type="button"
+              class="shrink-0 text-text-tertiary transition hover:text-text-secondary"
+              :aria-label="showPassword ? t('auth.hidePassword') : t('auth.showPassword')"
+              @click="showPassword = !showPassword"
+            >
+              <svg
+                v-if="!showPassword"
+                class="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <svg
+                v-else
+                class="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M9.88 5.09A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a18 18 0 0 1-3.06 3.94M6.06 6.06A18 18 0 0 0 2 12s3.5 7 10 7a10.6 10.6 0 0 0 3.06-.45" />
+                <path d="m3 3 18 18" />
+                <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+              </svg>
+            </button>
+          </span>
         </label>
 
-        <label class="block space-y-1.5">
-          <span class="text-sm font-medium text-ink-700">{{ t('auth.orgSlugOptional') }}</span>
+        <label class="flex flex-col gap-1.5">
+          <span class="text-[13px] font-medium text-text-secondary dark:text-ink-300">
+            {{ t('auth.passwordConfirm') }}
+          </span>
+          <span
+            class="flex h-11 items-center gap-2.5 rounded-lg border border-border-default bg-surface-canvas px-3.5 transition focus-within:border-2 focus-within:border-border-focus dark:border-ink-700 dark:bg-ink-900"
+          >
+            <svg
+              class="h-4 w-4 shrink-0 text-text-tertiary"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="4" y="11" width="16" height="9" rx="2" />
+              <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+            </svg>
+            <input
+              v-model="confirm"
+              name="confirm"
+              :type="showPassword ? 'text' : 'password'"
+              autocomplete="new-password"
+              required
+              class="w-full bg-transparent text-sm text-text-primary outline-none placeholder:text-text-tertiary dark:text-ink-50"
+            />
+          </span>
+        </label>
+
+        <label class="flex cursor-pointer items-start gap-2 pt-1">
           <input
-            v-model="orgSlug"
-            type="text"
-            placeholder="default"
-            class="w-full h-11 px-3 rounded-lg border border-ink-200 bg-white focus:border-primary-600 focus:ring-2 focus:ring-primary-100 outline-none transition"
+            v-model="agreed"
+            data-testid="signup-terms"
+            type="checkbox"
+            class="mt-0.5 h-4 w-4 shrink-0 rounded-sm border-border-strong text-primary-600 accent-primary-600"
           />
+          <span class="text-xs leading-[18px] text-text-secondary dark:text-ink-400">
+            {{ t('auth.tncAgree') }}
+          </span>
         </label>
 
         <p
-          v-if="mismatch"
+          v-if="localError || auth.error"
           role="alert"
-          class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700"
+          class="rounded-md border border-status-danger-subtle bg-status-danger-subtle px-3 py-2 text-sm text-status-danger-base"
         >
-          {{ t('auth.passwordMismatch') }}
-        </p>
-        <p
-          v-else-if="auth.error"
-          role="alert"
-          class="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700"
-        >
-          {{ auth.error }}
+          {{ localError ?? auth.error }}
         </p>
 
-        <AppButton type="submit" :disabled="auth.loading" class="w-full !h-11">
-          {{ auth.loading ? t('common.loading') : t('auth.submitSignup') }}
-        </AppButton>
+        <button
+          type="submit"
+          :disabled="auth.loading"
+          class="flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-primary-600 text-[15px] font-semibold text-white transition hover:bg-primary-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {{ auth.loading ? t('common.loading') : t('auth.createAndSignIn') }}
+          <svg
+            v-if="!auth.loading"
+            class="h-4 w-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M5 12h14M13 6l6 6-6 6" />
+          </svg>
+        </button>
 
-        <p class="text-sm text-ink-500 text-center">
+        <p class="pt-1 text-center text-[13px] text-text-secondary dark:text-ink-400">
           {{ t('auth.haveAccount') }}
-          <router-link to="/login" class="text-primary-700 hover:underline ml-1 font-medium">
-            {{ t('auth.submitLogin') }}
+          <router-link
+            to="/login"
+            class="ml-1 font-semibold text-primary-600 hover:underline dark:text-primary-400"
+          >
+            {{ t('auth.signInHere') }}
           </router-link>
         </p>
       </form>
