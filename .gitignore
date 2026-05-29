@@ -1,6 +1,7 @@
 # --- Sensitive: customer data + legacy code ---
 data/
 old-code/
+.sync/
 # Carve-out: in-tree, committed taxonomy/config YAML that lives under
 # src/indusia_visual_editor/data/ — these are app-shipped data files,
 # not customer data. The blanket `data/` ignore is for top-level
