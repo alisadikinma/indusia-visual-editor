@@ -1,6 +1,6 @@
 # Snapshot dev state for Macbook sync.
 # - Pushes any unpushed commits to origin/main
-# - Dumps the dev Postgres (ive-postgres-dev) to .sync/ive-db.sql.gz
+# - Dumps the dev Postgres (ive-postgres-dev) to .sync/ive-db.dump
 # - Copies storage/ uploads to .sync/storage.tar.gz (golden samples, BOM xlsx)
 #
 # Transfer .sync/ ke Macbook (AirDrop / scp / iCloud) lalu jalankan
@@ -29,10 +29,10 @@ if (-not $SkipPush) {
     if ($LASTEXITCODE -ne 0) { throw "git push failed" }
 }
 
-Write-Host "==> dumping ive-postgres-dev → .sync/ive-db.dump" -ForegroundColor Cyan
+Write-Host "==> dumping ive-postgres-dev -> .sync/ive-db.dump" -ForegroundColor Cyan
 $container = "ive-postgres-dev"
 $running = docker ps --filter "name=$container" --format "{{.Names}}"
-if (-not $running) { throw "container $container not running — start with ./scripts/dev-up.ps1" }
+if (-not $running) { throw "container $container not running - start with ./scripts/dev-up.ps1" }
 
 # pg_dump custom format: built-in compression, parallel restore-able, byte-identical
 # round-trip via pg_restore. Matches infra/scripts/pg_backup.sh prod pattern.
@@ -62,7 +62,7 @@ $dumpSize = "{0:N1} MB" -f ((Get-Item $dumpPath).Length / 1MB)
 Write-Host "==> dump size: $dumpSize" -ForegroundColor Cyan
 
 if (-not $SkipStorage -and (Test-Path "$repoRoot\storage")) {
-    Write-Host "==> archiving storage/ → .sync/storage.tar.gz" -ForegroundColor Cyan
+    Write-Host "==> archiving storage/ -> .sync/storage.tar.gz" -ForegroundColor Cyan
     tar -czf "$syncDir\storage.tar.gz" -C $repoRoot storage
     if ($LASTEXITCODE -ne 0) { throw "tar failed" }
 }
