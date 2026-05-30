@@ -67,6 +67,12 @@ const routes: RouteRecordRaw[] = [
     meta: { titleKey: 'nav.gate2' },
   },
   {
+    path: '/feedback',
+    name: 'inspection-feedback',
+    component: () => import('@/views/InspectionFeedbackView.vue'),
+    meta: { titleKey: 'nav.feedback' },
+  },
+  {
     path: '/models',
     name: 'models',
     component: () => import('@/views/ModelsView.vue'),

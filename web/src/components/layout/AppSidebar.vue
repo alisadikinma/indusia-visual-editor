@@ -18,6 +18,7 @@ const ui = useUiStore()
 
 const workspaceItems = computed<NavItem[]>(() => [
   { id: 'dashboard', to: '/', labelKey: 'nav.dashboard', icon: 'grid' },
+  { id: 'feedback', to: '/feedback', labelKey: 'nav.feedback', icon: 'message-square' },
   { id: 'labeling', labelKey: 'nav.labeling', icon: 'square-mouse-pointer', disabled: true },
   { id: 'training', labelKey: 'nav.training', icon: 'cpu', disabled: true },
   { id: 'eval', labelKey: 'nav.eval', icon: 'gauge', disabled: true },
