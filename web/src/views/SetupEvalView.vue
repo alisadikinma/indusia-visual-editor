@@ -1,134 +1,174 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import AppButton from '@/components/primitives/AppButton.vue'
 import { useEvalStore } from '@/stores/eval'
+import { useTrainingStore } from '@/stores/training'
+import { EVAL_THRESHOLDS } from '@/api/eval'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const evalStore = useEvalStore()
+const training = useTrainingStore()
 
 const projectId = computed(() => String(route.params.id ?? ''))
 const runId = computed(() => String(route.params.runId ?? ''))
-
 const starting = ref(false)
 
-const testSetOptions = [
-  { id: 'holdout', count: 142, source: 'training-split' },
-  { id: 'production_run', count: 24, source: 'last-24h-edge' },
-  { id: 'upload', count: 0, source: null },
-] as const
+onMounted(async () => {
+  if (runId.value) await training.loadRun(projectId.value, runId.value)
+})
+
+// Training-run metrics (real, from the succeeded run). Surfaced as a reference
+// for the readiness gates — clearly labelled "train", never as an eval result.
+const trainMetrics = computed(() => {
+  const m = training.currentRun?.metrics_json ?? null
+  const num = (...keys: string[]): number | null => {
+    if (!m) return null
+    for (const k of keys) {
+      const v = m[k]
+      if (typeof v === 'number') return v
+    }
+    return null
+  }
+  return {
+    map: num('map', 'mAP'),
+    f1_macro: num('f1_macro', 'f1Macro', 'f1'),
+    epochs: num('epochs', 'total_epochs'),
+  }
+})
+
+const modelStatus = computed(() => training.currentRun?.status ?? 'pending')
+
+function fmt(v: number | null): string {
+  return v == null ? t('setupEval.pending') : v.toFixed(3)
+}
+
+const gates = computed(() => [
+  { key: 'map', label: 'mAP', threshold: EVAL_THRESHOLDS.map_min, value: trainMetrics.value.map },
+  { key: 'f1', label: 'F1 macro', threshold: EVAL_THRESHOLDS.f1_macro_min, value: trainMetrics.value.f1_macro },
+  { key: 'perc', label: t('setupEval.perComponentGate'), threshold: EVAL_THRESHOLDS.per_component_f1_min, value: null },
+])
+
+const testSetOptions = ['holdout', 'production_run', 'upload'] as const
 
 async function startEval() {
   starting.value = true
-  // The MSW handler short-circuits the load; real backend would kick off the eval job.
   await evalStore.load(runId.value)
-  await router.push({
-    name: 'eval',
-    params: { id: projectId.value, runId: runId.value },
-  })
+  await router.push({ name: 'eval', params: { id: projectId.value, runId: runId.value } })
 }
-
 function backToTraining() {
-  router.push({
-    name: 'training',
-    params: { id: projectId.value, runId: runId.value },
-  })
+  router.push({ name: 'training', params: { id: projectId.value, runId: runId.value } })
 }
 </script>
 
 <template>
-  <div class="p-8 max-w-[1100px] mx-auto space-y-6">
+  <div class="p-8 max-w-[1280px] mx-auto space-y-6">
     <header class="space-y-1">
-      <p class="text-xs font-mono uppercase tracking-wider text-ink-500">
-        {{ t('setupEval.kicker') }}
-      </p>
       <h1 class="text-2xl font-semibold text-ink-900">{{ t('setupEval.title') }}</h1>
       <p class="text-sm text-ink-500">{{ t('setupEval.subhead') }}</p>
     </header>
 
-    <div
-      class="rounded-xl bg-primary-50 border border-primary-200 px-5 py-4 flex items-start gap-3"
-    >
-      <span
-        class="h-6 w-6 rounded-full bg-primary-700 text-white grid place-items-center text-xs shrink-0"
-      >
-        ⏸
-      </span>
+    <!-- HITL banner -->
+    <div data-testid="setupeval-hitl" class="flex items-start gap-3 rounded-xl bg-blue-50 border border-blue-200 px-5 py-4">
+      <span class="h-7 w-7 grid place-items-center rounded-full bg-blue-500 text-white text-sm shrink-0">i</span>
       <div>
-        <p class="text-sm font-semibold text-primary-900">{{ t('setupEval.hitlTitle') }}</p>
-        <p class="text-sm text-primary-900/80">{{ t('setupEval.hitlBlurb') }}</p>
+        <p class="text-sm font-semibold text-blue-900">{{ t('setupEval.hitlTitle') }}</p>
+        <p class="text-sm text-blue-900/80">{{ t('setupEval.hitlBlurb') }}</p>
       </div>
     </div>
 
-    <section class="rounded-xl bg-white border border-ink-200 shadow-card p-5">
-      <h2 class="text-base font-semibold text-ink-900">{{ t('setupEval.testSetTitle') }}</h2>
-      <div class="mt-3 space-y-2">
-        <label
-          v-for="opt in testSetOptions"
-          :key="opt.id"
-          class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition"
-          :class="
-            evalStore.testSet === opt.id
-              ? 'border-primary-300 bg-primary-50'
-              : 'border-ink-200 hover:bg-ink-50'
-          "
-        >
-          <input
-            v-model="evalStore.testSet"
-            type="radio"
-            :value="opt.id"
-            class="mt-1"
-          />
-          <div class="flex-1">
-            <p class="text-sm font-medium text-ink-900">
-              {{ t(`setupEval.option.${opt.id}.title`) }}
-            </p>
-            <p class="text-xs text-ink-500">
-              {{ t(`setupEval.option.${opt.id}.blurb`) }}
-            </p>
+    <div class="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
+      <div class="space-y-6">
+        <!-- Model under evaluation -->
+        <section data-testid="setupeval-model" class="rounded-xl bg-white border border-border-default shadow-card p-6">
+          <h2 class="text-base font-semibold text-ink-900">{{ t('setupEval.modelTitle') }}</h2>
+          <p class="text-sm text-ink-500 mb-4">{{ t('setupEval.modelSub') }}</p>
+          <dl class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+            <div>
+              <dt class="text-[11px] font-mono uppercase tracking-wider text-ink-500">{{ t('setupEval.run') }}</dt>
+              <dd class="font-mono text-ink-900">#{{ runId.slice(0, 8) }}</dd>
+            </div>
+            <div>
+              <dt class="text-[11px] font-mono uppercase tracking-wider text-ink-500">{{ t('setupEval.epochs') }}</dt>
+              <dd class="font-mono tabular-nums text-ink-900">{{ trainMetrics.epochs ?? '—' }}</dd>
+            </div>
+            <div>
+              <dt class="text-[11px] font-mono uppercase tracking-wider text-ink-500">{{ t('setupEval.status') }}</dt>
+              <dd class="font-medium" :class="modelStatus === 'succeeded' ? 'text-primary-700' : 'text-ink-700'">
+                {{ t(`training.status.${modelStatus}`) }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-[11px] font-mono uppercase tracking-wider text-ink-500">mAP ({{ t('setupEval.train') }})</dt>
+              <dd class="font-mono tabular-nums text-ink-900">{{ fmt(trainMetrics.map) }}</dd>
+            </div>
+            <div>
+              <dt class="text-[11px] font-mono uppercase tracking-wider text-ink-500">F1 macro ({{ t('setupEval.train') }})</dt>
+              <dd class="font-mono tabular-nums text-ink-900">{{ fmt(trainMetrics.f1_macro) }}</dd>
+            </div>
+          </dl>
+        </section>
+
+        <!-- Test set -->
+        <section data-testid="setupeval-testset" class="rounded-xl bg-white border border-border-default shadow-card p-6">
+          <h2 class="text-base font-semibold text-ink-900">{{ t('setupEval.testSetTitle') }}</h2>
+          <p class="text-sm text-ink-500 mb-3">{{ t('setupEval.testSetSub') }}</p>
+          <div class="space-y-2">
+            <label
+              v-for="opt in testSetOptions"
+              :key="opt"
+              class="flex items-start gap-3 rounded-xl border-2 p-4 cursor-pointer transition"
+              :class="evalStore.testSet === opt ? 'border-primary-400 bg-primary-50' : 'border-border-default hover:bg-ink-50'"
+            >
+              <input v-model="evalStore.testSet" type="radio" :value="opt" class="mt-1 accent-primary-600" />
+              <div class="flex-1">
+                <p class="text-sm font-medium text-ink-900">{{ t(`setupEval.option.${opt}.title`) }}</p>
+                <p class="text-xs text-ink-500">{{ t(`setupEval.option.${opt}.blurb`) }}</p>
+              </div>
+            </label>
           </div>
-          <span class="text-xs font-mono text-ink-500 tabular-nums">
-            {{ opt.count > 0 ? `${opt.count} img` : '—' }}
-          </span>
-        </label>
+        </section>
       </div>
-    </section>
 
-    <section class="rounded-xl bg-white border border-ink-200 shadow-card p-5">
-      <h2 class="text-base font-semibold text-ink-900">{{ t('setupEval.thresholdTitle') }}</h2>
-      <ul class="mt-3 space-y-2 text-sm">
-        <li class="flex items-center justify-between border-b border-ink-100 pb-2">
-          <span class="text-ink-700">mAP ≥ 0.80</span>
-          <span class="text-success font-mono">✓ {{ t('setupEval.estimatedPass') }}</span>
-        </li>
-        <li class="flex items-center justify-between border-b border-ink-100 pb-2">
-          <span class="text-ink-700">F1 macro ≥ 0.80</span>
-          <span class="text-success font-mono">✓ {{ t('setupEval.estimatedPass') }}</span>
-        </li>
-        <li class="flex items-center justify-between border-b border-ink-100 pb-2">
-          <span class="text-ink-700">Per-component F1 ≥ 0.70</span>
-          <span class="text-warning font-mono">~ {{ t('setupEval.atRiskFor', { n: 1 }) }}</span>
-        </li>
-        <li class="flex items-center justify-between">
-          <span class="text-ink-700">{{ t('setupEval.coverage') }}</span>
-          <span class="text-success font-mono">✓ 100%</span>
-        </li>
-      </ul>
-    </section>
+      <!-- Readiness -->
+      <aside class="space-y-4">
+        <section data-testid="setupeval-readiness" class="rounded-xl bg-white border border-border-default shadow-card p-5">
+          <h2 class="text-base font-semibold text-ink-900">{{ t('setupEval.readinessTitle') }}</h2>
+          <p class="text-xs text-ink-500 mb-3">{{ t('setupEval.readinessSub') }}</p>
+          <ul class="space-y-2">
+            <li v-for="g in gates" :key="g.key" class="flex items-center justify-between rounded-lg bg-surface-raised px-3 py-2">
+              <div>
+                <p class="text-sm text-ink-900">{{ g.label }}</p>
+                <p class="text-[11px] font-mono text-ink-400">≥ {{ g.threshold.toFixed(2) }}</p>
+              </div>
+              <span
+                class="inline-flex items-center h-6 px-2 rounded-full text-xs font-mono"
+                :class="g.value == null ? 'bg-ink-100 text-ink-500' : g.value >= g.threshold ? 'bg-primary-50 text-primary-700' : 'bg-amber-50 text-amber-700'"
+              >
+                {{ g.value == null ? t('setupEval.pending') : `${g.value.toFixed(3)} (${t('setupEval.train')})` }}
+              </span>
+            </li>
+          </ul>
+        </section>
 
-    <section class="rounded-xl bg-ink-50 border border-ink-200 p-5 flex items-start gap-4">
-      <span class="text-xs font-mono text-ink-500">{{ t('setupEval.duration') }}</span>
-      <span class="text-sm font-medium text-ink-900">~2 min</span>
-    </section>
+        <div class="rounded-xl bg-surface-raised border border-border-default p-4">
+          <h3 class="text-sm font-semibold text-ink-900 mb-2">{{ t('setupEval.thingsTitle') }}</h3>
+          <ul class="space-y-1.5 text-[13px] text-ink-600">
+            <li class="flex gap-2"><span class="text-ink-400">·</span><span>{{ t('setupEval.thing1') }}</span></li>
+            <li class="flex gap-2"><span class="text-ink-400">·</span><span>{{ t('setupEval.thing2') }}</span></li>
+          </ul>
+        </div>
+      </aside>
+    </div>
 
-    <footer class="flex items-center justify-between">
-      <AppButton variant="ghost" @click="backToTraining">
+    <footer class="flex items-center justify-between rounded-xl bg-white border border-border-default shadow-card px-6 py-4">
+      <AppButton data-testid="setupeval-back" variant="secondary" @click="backToTraining">
         ← {{ t('setupEval.backToTraining') }}
       </AppButton>
-      <AppButton :disabled="starting" @click="startEval">
+      <AppButton data-testid="setupeval-start" :disabled="starting" @click="startEval">
         {{ starting ? t('common.loading') : t('setupEval.startEval') }} →
       </AppButton>
     </footer>
