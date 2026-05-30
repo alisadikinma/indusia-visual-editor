@@ -311,7 +311,8 @@
     "colStatus": "Status",
     "colPromoted": "Dipasang",
     "status": { "production": "Produksi", "staged": "Staging", "archived": "Arsip" },
-    "empty": "Tidak ada model untuk filter ini."
+    "empty": "Tidak ada model untuk filter ini.",
+    "summary": "{n} versi total · semua project · diurutkan dari yang terbaru"
   },
   "edges": {
     "kicker": "Pengaturan · edge",
@@ -333,7 +334,13 @@
     "unpin": "Lepas pin",
     "unpinSuccess": "Pin edge dilepas — akan auto-pull pada webhook berikutnya.",
     "unpinFailed": "Gagal melepas pin edge",
-    "empty": "Belum ada edge terdaftar."
+    "empty": "Belum ada edge terdaftar.",
+    "summary": "{total} perangkat · {online} online · {offline} offline",
+    "colHeartbeat": "Heartbeat",
+    "secondsAgo": "{n}s lalu",
+    "minutesAgo": "{n}m lalu",
+    "hoursAgo": "{n}j lalu",
+    "daysAgo": "{n}h lalu"
   },
   "datasets": {
     "kicker": "Pengaturan · dataset",
@@ -346,7 +353,8 @@
     "colSize": "Ukuran",
     "colCreated": "Dibuat",
     "kind": { "training": "Pelatihan", "holdout": "Holdout", "production_run": "Run edge" },
-    "empty": "Belum ada dataset."
+    "empty": "Belum ada dataset.",
+    "summary": "{n} dataset · {regions} anotasi total"
   },
   "team": {
     "kicker": "Pengaturan · tim",
@@ -358,7 +366,9 @@
     "colCreated": "Dibuat",
     "role": { "admin": "Admin", "engineer": "Insinyur", "viewer": "Pengamat" },
     "neverActive": "Belum pernah aktif",
-    "empty": "Belum ada anggota tim."
+    "empty": "Belum ada anggota tim.",
+    "summary": "{n} anggota · default organization",
+    "colMember": "Anggota"
   },
   "preferences": {
     "kicker": "Pengaturan · preferensi",
@@ -373,6 +383,12 @@
     "engineerMode": "Mode insinyur",
     "engineerBlurb": "Tampilkan hyperparameter, detail teknis, dan terminal log di layar workflow.",
     "engineerMovedHint": "Toggle Mode Insinyur sekarang di topbar — klik chip </> untuk mengaktifkan.",
+    "accountSub": "Nama tampil dan email akun (read-only).",
+    "theme": "Tema",
+    "themeBlurb": "Berlaku di perangkat ini.",
+    "themeLight": "Terang",
+    "themeDark": "Gelap",
+    "lang": { "id": "Bahasa Indonesia", "en": "English" },
     "storedLocal": "Preferensi ini disimpan di localStorage dan tidak sinkron antar perangkat."
   },
   "chat": {

@@ -315,7 +315,8 @@
       "staged": "Staged",
       "archived": "Archived"
     },
-    "empty": "No models match this filter."
+    "empty": "No models match this filter.",
+    "summary": "{n} versions total · all projects · newest first"
   },
   "edges": {
     "kicker": "Settings · edges",
@@ -337,7 +338,13 @@
     "unpin": "Unpin",
     "unpinSuccess": "Edge unpinned — will auto-pull on next webhook.",
     "unpinFailed": "Failed to unpin edge",
-    "empty": "No edges registered yet."
+    "empty": "No edges registered yet.",
+    "summary": "{total} devices · {online} online · {offline} offline",
+    "colHeartbeat": "Heartbeat",
+    "secondsAgo": "{n}s ago",
+    "minutesAgo": "{n}m ago",
+    "hoursAgo": "{n}h ago",
+    "daysAgo": "{n}d ago"
   },
   "datasets": {
     "kicker": "Settings · datasets",
@@ -354,7 +361,8 @@
       "holdout": "Holdout",
       "production_run": "Edge run"
     },
-    "empty": "No datasets yet."
+    "empty": "No datasets yet.",
+    "summary": "{n} datasets · {regions} annotations total"
   },
   "team": {
     "kicker": "Settings · team",
@@ -366,7 +374,9 @@
     "colCreated": "Created",
     "role": { "admin": "Admin", "engineer": "Engineer", "viewer": "Viewer" },
     "neverActive": "Never active",
-    "empty": "No team members yet."
+    "empty": "No team members yet.",
+    "summary": "{n} members · default organization",
+    "colMember": "Member"
   },
   "preferences": {
     "kicker": "Settings · preferences",
@@ -381,6 +391,12 @@
     "engineerMode": "Engineer mode",
     "engineerBlurb": "Reveal hyperparameters, tech details, and log terminals on workflow screens.",
     "engineerMovedHint": "Engineer mode now lives in the top bar — toggle the </> chip to enable.",
+    "accountSub": "Display name and account email (read-only).",
+    "theme": "Theme",
+    "themeBlurb": "Applies on this device.",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "lang": { "id": "Bahasa Indonesia", "en": "English" },
     "storedLocal": "These preferences are stored in localStorage and do not sync across devices."
   },
   "chat": {

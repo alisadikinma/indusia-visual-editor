@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { apiClient } from '@/api/client'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 interface DatasetRow {
   id: string
@@ -28,65 +28,68 @@ onMounted(async () => {
   }
 })
 
+const totalRegions = computed(() => items.value.reduce((a, d) => a + d.region_count, 0))
+
 const kindTone: Record<string, string> = {
-  training: 'bg-primary-50 border-primary-200 text-primary-800',
-  holdout: 'bg-info/10 border-info/30 text-info',
-  production_run: 'bg-amber-50 border-amber-200 text-amber-800',
+  training: 'bg-primary-50 text-primary-800',
+  holdout: 'bg-blue-50 text-blue-700',
+  production_run: 'bg-amber-50 text-amber-800',
+}
+
+function fmtDate(iso: string): string {
+  try {
+    return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium' }).format(new Date(iso))
+  } catch {
+    return iso.slice(0, 10)
+  }
 }
 </script>
 
 <template>
-  <div class="p-8 max-w-[1200px] mx-auto space-y-6">
-    <header class="space-y-1">
-      <p class="text-xs font-mono uppercase tracking-wider text-ink-500">
-        {{ t('datasets.kicker') }}
-      </p>
+  <div class="p-8 max-w-[1280px] mx-auto space-y-6">
+    <header>
       <h1 class="text-2xl font-semibold text-ink-900">{{ t('datasets.title') }}</h1>
-      <p class="text-sm text-ink-500">{{ t('datasets.subhead') }}</p>
+      <p class="text-sm text-ink-500">{{ t('datasets.summary', { n: items.length, regions: totalRegions }) }}</p>
     </header>
 
-    <div class="rounded-xl bg-white border border-ink-200 shadow-card overflow-hidden">
-      <table class="w-full text-sm">
-        <thead class="bg-ink-50 text-xs font-mono uppercase tracking-wider text-ink-500">
-          <tr>
-            <th class="text-left px-4 py-3 font-medium">{{ t('datasets.colName') }}</th>
-            <th class="text-left px-4 py-3 font-medium">{{ t('datasets.colProject') }}</th>
-            <th class="text-left px-4 py-3 font-medium">{{ t('datasets.colKind') }}</th>
-            <th class="text-right px-4 py-3 font-medium">{{ t('datasets.colRegions') }}</th>
-            <th class="text-right px-4 py-3 font-medium">{{ t('datasets.colSize') }}</th>
-            <th class="text-left px-4 py-3 font-medium">{{ t('datasets.colCreated') }}</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-if="loading" class="border-t border-ink-100">
-            <td colspan="6" class="px-4 py-6 text-center text-sm text-ink-500">
-              {{ t('common.loading') }}
-            </td>
-          </tr>
-          <tr v-else-if="items.length === 0" class="border-t border-ink-100">
-            <td colspan="6" class="px-4 py-10 text-center text-sm text-ink-500">
-              {{ t('datasets.empty') }}
-            </td>
-          </tr>
-          <tr v-for="row in items" :key="row.id" class="border-t border-ink-100">
-            <td class="px-4 py-3 font-medium text-ink-900">{{ row.name }}</td>
-            <td class="px-4 py-3 font-mono text-xs text-ink-500">{{ row.project }}</td>
-            <td class="px-4 py-3">
-              <span
-                class="inline-flex items-center h-5 px-2 rounded-full border text-[11px] font-medium"
-                :class="kindTone[row.kind]"
-              >
-                {{ t(`datasets.kind.${row.kind}`) }}
-              </span>
-            </td>
-            <td class="px-4 py-3 text-right font-mono tabular-nums">{{ row.region_count }}</td>
-            <td class="px-4 py-3 text-right font-mono tabular-nums">{{ row.size_mb }} MB</td>
-            <td class="px-4 py-3 text-xs text-ink-500 font-mono">
-              {{ new Date(row.created_at).toISOString().slice(0, 10) }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <div v-if="loading" class="rounded-xl border border-border-default bg-white px-5 py-16 text-center text-sm text-ink-500">
+      {{ t('common.loading') }}
+    </div>
+    <div v-else-if="items.length === 0" class="rounded-xl border border-border-default bg-white px-5 py-16 text-center text-sm text-ink-500">
+      {{ t('datasets.empty') }}
+    </div>
+
+    <div v-else data-testid="datasets-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <article
+        v-for="d in items"
+        :key="d.id"
+        data-testid="dataset-card"
+        class="rounded-xl bg-white border border-border-default shadow-card p-5"
+      >
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h2 class="text-base font-semibold text-ink-900 truncate">{{ d.name }}</h2>
+            <p class="text-xs font-mono text-ink-500 truncate">{{ d.project }}</p>
+          </div>
+          <span class="inline-flex items-center h-5 px-2 rounded-full text-[11px] font-medium shrink-0" :class="kindTone[d.kind]">
+            {{ t(`datasets.kind.${d.kind}`) }}
+          </span>
+        </div>
+        <dl class="mt-4 grid grid-cols-3 gap-3">
+          <div>
+            <dt class="text-[11px] font-mono uppercase tracking-wider text-ink-500">{{ t('datasets.colRegions') }}</dt>
+            <dd class="text-lg font-semibold font-mono tabular-nums text-ink-900">{{ d.region_count }}</dd>
+          </div>
+          <div>
+            <dt class="text-[11px] font-mono uppercase tracking-wider text-ink-500">{{ t('datasets.colSize') }}</dt>
+            <dd class="text-lg font-semibold font-mono tabular-nums text-ink-900">{{ d.size_mb }} MB</dd>
+          </div>
+          <div>
+            <dt class="text-[11px] font-mono uppercase tracking-wider text-ink-500">{{ t('datasets.colCreated') }}</dt>
+            <dd class="text-sm font-mono text-ink-700 mt-1">{{ fmtDate(d.created_at) }}</dd>
+          </div>
+        </dl>
+      </article>
     </div>
   </div>
 </template>

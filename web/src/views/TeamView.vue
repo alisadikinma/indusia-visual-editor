@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { apiClient } from '@/api/client'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 interface TeamMember {
   id: string
@@ -27,57 +27,77 @@ onMounted(async () => {
 })
 
 const roleTone: Record<string, string> = {
-  admin: 'bg-primary-50 border-primary-200 text-primary-800',
-  engineer: 'bg-engineer-50 border-engineer-200 text-engineer-800',
-  viewer: 'bg-ink-100 border-ink-200 text-ink-600',
+  admin: 'bg-primary-50 text-primary-800',
+  engineer: 'bg-engineer-50 text-engineer-800',
+  viewer: 'bg-ink-100 text-ink-600',
 }
+
+function displayName(email: string): string {
+  const local = email.split('@')[0]
+  return local
+    .split(/[._-]/)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+    .join(' ')
+}
+function initials(email: string): string {
+  return displayName(email)
+    .split(' ')
+    .map((p) => p[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase()
+}
+function lastActive(iso: string | null): string {
+  if (!iso) return t('team.neverActive')
+  try {
+    return new Intl.DateTimeFormat(locale.value, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso))
+  } catch {
+    return iso.slice(0, 10)
+  }
+}
+const avatarTones = ['bg-primary-600', 'bg-blue-500', 'bg-amber-500', 'bg-red-500', 'bg-engineer-600', 'bg-ink-500']
 </script>
 
 <template>
-  <div class="p-8 max-w-[1100px] mx-auto space-y-6">
-    <header class="space-y-1">
-      <p class="text-xs font-mono uppercase tracking-wider text-ink-500">{{ t('team.kicker') }}</p>
+  <div class="p-8 max-w-[1200px] mx-auto space-y-6">
+    <header>
       <h1 class="text-2xl font-semibold text-ink-900">{{ t('team.title') }}</h1>
-      <p class="text-sm text-ink-500">{{ t('team.subhead') }}</p>
+      <p class="text-sm text-ink-500">{{ t('team.summary', { n: items.length }) }}</p>
     </header>
 
-    <div class="rounded-xl bg-white border border-ink-200 shadow-card overflow-hidden">
+    <div data-testid="team-table" class="rounded-xl bg-white border border-border-default shadow-card overflow-hidden">
       <table class="w-full text-sm">
-        <thead class="bg-ink-50 text-xs font-mono uppercase tracking-wider text-ink-500">
+        <thead class="bg-surface-raised text-[11px] font-mono uppercase tracking-wider text-ink-500">
           <tr>
+            <th class="text-left px-4 py-3 font-medium">{{ t('team.colMember') }}</th>
             <th class="text-left px-4 py-3 font-medium">{{ t('team.colEmail') }}</th>
             <th class="text-left px-4 py-3 font-medium">{{ t('team.colRole') }}</th>
             <th class="text-left px-4 py-3 font-medium">{{ t('team.colLastActive') }}</th>
-            <th class="text-left px-4 py-3 font-medium">{{ t('team.colCreated') }}</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="loading" class="border-t border-ink-100">
-            <td colspan="4" class="px-4 py-6 text-center text-sm text-ink-500">
-              {{ t('common.loading') }}
-            </td>
+          <tr v-if="loading" class="border-t border-border-subtle">
+            <td colspan="4" class="px-4 py-6 text-center text-sm text-ink-500">{{ t('common.loading') }}</td>
           </tr>
-          <tr v-else-if="items.length === 0" class="border-t border-ink-100">
-            <td colspan="4" class="px-4 py-10 text-center text-sm text-ink-500">
-              {{ t('team.empty') }}
-            </td>
+          <tr v-else-if="items.length === 0" class="border-t border-border-subtle">
+            <td colspan="4" class="px-4 py-10 text-center text-sm text-ink-500">{{ t('team.empty') }}</td>
           </tr>
-          <tr v-for="m in items" :key="m.id" class="border-t border-ink-100">
-            <td class="px-4 py-3 font-medium text-ink-900">{{ m.email }}</td>
+          <tr v-for="(m, i) in items" :key="m.id" class="border-t border-border-subtle">
             <td class="px-4 py-3">
-              <span
-                class="inline-flex items-center h-5 px-2 rounded-full border text-[11px] font-medium"
-                :class="roleTone[m.role]"
-              >
+              <div class="flex items-center gap-3">
+                <span class="h-9 w-9 grid place-items-center rounded-full text-white text-xs font-semibold shrink-0" :class="avatarTones[i % avatarTones.length]">
+                  {{ initials(m.email) }}
+                </span>
+                <span class="font-medium text-ink-900">{{ displayName(m.email) }}</span>
+              </div>
+            </td>
+            <td class="px-4 py-3 font-mono text-xs text-ink-500">{{ m.email }}</td>
+            <td class="px-4 py-3">
+              <span class="inline-flex items-center h-5 px-2 rounded-full text-[11px] font-medium" :class="roleTone[m.role]">
                 {{ t(`team.role.${m.role}`) }}
               </span>
             </td>
-            <td class="px-4 py-3 text-xs text-ink-500 font-mono">
-              {{ m.last_active_at ? new Date(m.last_active_at).toLocaleString() : t('team.neverActive') }}
-            </td>
-            <td class="px-4 py-3 text-xs text-ink-500 font-mono">
-              {{ new Date(m.created_at).toISOString().slice(0, 10) }}
-            </td>
+            <td class="px-4 py-3 text-xs text-ink-500 font-mono">{{ lastActive(m.last_active_at) }}</td>
           </tr>
         </tbody>
       </table>
