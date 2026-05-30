@@ -25,6 +25,10 @@ from indusia_visual_editor.routes.dataset_stats import router as dataset_stats_r
 from indusia_visual_editor.routes.deploy import router as deploy_router
 from indusia_visual_editor.routes.edges import router as edges_router
 from indusia_visual_editor.routes.eval import router as eval_router
+from indusia_visual_editor.routes.inspection_feedback import (
+    project_router as inspection_feedback_project_router,
+    router as inspection_feedback_router,
+)
 from indusia_visual_editor.routes.labels import router as labels_router
 from indusia_visual_editor.routes.llm import router as llm_router
 from indusia_visual_editor.routes.projects import router as projects_router
@@ -173,6 +177,8 @@ app.include_router(eval_router)
 app.include_router(deploy_router)
 app.include_router(edges_router)
 app.include_router(chat_router)
+app.include_router(inspection_feedback_project_router)
+app.include_router(inspection_feedback_router)
 
 
 @app.get("/health")

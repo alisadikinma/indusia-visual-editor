@@ -45,6 +45,9 @@ PROTECTED_PROBES: list[tuple[str, str, dict | None]] = [
     ("PUT", f"/api/edges/{uuid.uuid4()}/pin", {"model_name": "x", "version": "1"}),
     ("POST", f"/api/projects/{uuid.uuid4()}/chat", None),
     ("POST", f"/api/chat/{uuid.uuid4()}/stream", {"user_message": "hi"}),
+    ("POST", f"/api/projects/{uuid.uuid4()}/inspection-feedback", None),
+    ("PUT", f"/api/inspection-feedback/{uuid.uuid4()}", {"status": "dismissed"}),
+    ("POST", f"/api/inspection-feedback/{uuid.uuid4()}/promote", None),
 ]
 
 
