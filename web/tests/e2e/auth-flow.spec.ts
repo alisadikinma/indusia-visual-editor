@@ -72,12 +72,12 @@ test.describe('end-to-end realistic flow', () => {
     await expect(page).toHaveURL(/\/projects\/new\/wizard/)
 
     // The label is a <span> inside <label>, so target by placeholder instead.
-    await page.getByPlaceholder(/PCB Inspection v1/i).fill('Smoke PCB')
-    await page.getByPlaceholder(/pcb-inspection-v1/i).fill('smoke-pcb')
+    await page.getByPlaceholder(/Mainboard XR-200/i).fill('Smoke PCB')
+    await page.getByPlaceholder(/mainboard-xr-200/i).fill('smoke-pcb')
     await page.getByRole('button', { name: /continue/i }).click()
 
     // Step 2 heading; disambiguates from stepper label.
-    await expect(page.getByRole('heading', { name: /upload bom/i })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /upload bill of materials/i })).toBeVisible()
     await expect(page).toHaveURL(/\/projects\/[0-9a-f-]{36}\/wizard/, { timeout: 5000 })
   })
 })
