@@ -55,6 +55,62 @@ def _png_bytes(payload: bytes = b"fake-png-payload") -> bytes:
     return b"\x89PNG\r\n\x1a\n" + payload
 
 
+def _real_sharp_png() -> bytes:
+    """A genuinely decodable, sharp, well-exposed PNG for golden QC tests."""
+    import cv2
+    import numpy as np
+
+    img = np.full((256, 256, 3), 128, dtype=np.uint8)
+    img[::8, :] = 30
+    img[:, ::8] = 220
+    ok, buf = cv2.imencode(".png", img)
+    assert ok
+    return buf.tobytes()
+
+
+@pytest.mark.asyncio
+async def test_upload_golden_returns_qc(client: AsyncClient, isolated_storage_root: Path):
+    project_id = await _create_project(client, "qc")
+    r = await client.post(
+        f"/api/projects/{project_id}/assets",
+        params={"kind": "golden_top"},
+        files={"file": ("golden.png", io.BytesIO(_real_sharp_png()), "image/png")},
+    )
+    assert r.status_code == 201, r.text
+    qc = r.json()["data"]["qc"]
+    assert qc["verdict"] == "ok"
+    assert qc["sharpness"] > 0
+
+
+@pytest.mark.asyncio
+async def test_get_asset_qc_endpoint(client: AsyncClient, isolated_storage_root: Path):
+    project_id = await _create_project(client, "qcget")
+    up = await client.post(
+        f"/api/projects/{project_id}/assets",
+        params={"kind": "golden_bottom"},
+        files={"file": ("g.png", io.BytesIO(_real_sharp_png()), "image/png")},
+    )
+    asset_id = up.json()["data"]["id"]
+    r = await client.get(f"/api/projects/{project_id}/assets/{asset_id}/qc")
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["verdict"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_get_asset_qc_422_for_non_golden(
+    client: AsyncClient, isolated_storage_root: Path
+):
+    project_id = await _create_project(client, "qcnon")
+    up = await client.post(
+        f"/api/projects/{project_id}/assets",
+        params={"kind": "drawing"},
+        files={"file": ("d.png", io.BytesIO(_real_sharp_png()), "image/png")},
+    )
+    asset_id = up.json()["data"]["id"]
+    r = await client.get(f"/api/projects/{project_id}/assets/{asset_id}/qc")
+    assert r.status_code == 422, r.text
+
+
 @pytest.mark.asyncio
 async def test_upload_golden_top_image(client: AsyncClient, isolated_storage_root: Path):
     project_id = await _create_project(client, "upload")

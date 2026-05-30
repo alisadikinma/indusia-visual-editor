@@ -175,6 +175,18 @@
     "goldenBottom": "Sisi bawah",
     "goldenBottomOptional": "Opsional — lewati kalau sisi bawah tidak ada komponen yang perlu diinspeksi.",
     "replaceImage": "Ganti gambar",
+    "qc": { "ok": "Kualitas OK", "warn": "Perlu dicek", "fail": "Kualitas buruk" },
+    "qcReason": {
+      "blur_fail": "blur/defokus",
+      "blur_warn": "agak blur",
+      "exposure_fail": "exposure ekstrem",
+      "exposure_warn": "exposure kurang ideal",
+      "dark_clip_fail": "terlalu banyak area gelap",
+      "dark_clip_warn": "ada area gelap",
+      "bright_clip_fail": "terlalu banyak area over-exposed",
+      "bright_clip_warn": "ada area over-exposed",
+      "undecodable": "file gambar tidak terbaca"
+    },
     "goldenDropTop": "Drop top-side foto",
     "goldenDropBottom": "Drop bottom-side foto",
     "goldenFileHint": "JPG / PNG · max 50 MB · 1920×1080+ recommended",

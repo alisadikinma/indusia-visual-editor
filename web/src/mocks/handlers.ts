@@ -612,10 +612,40 @@ export const handlers = [
       bomDb.set(projectId, sampleBom(projectId))
     }
 
-    return HttpResponse.json(envelope(asset, 'asset uploaded'), { status: 201 })
+    // Golden images carry a QC verdict (T6/G4) — mock a healthy result.
+    const payload: MockAsset & { qc?: unknown } = { ...asset }
+    if ((kind === 'golden_top' || kind === 'golden_bottom') && (file.type || '').startsWith('image/')) {
+      payload.qc = {
+        verdict: 'ok',
+        reasons: [],
+        sharpness: 318.4,
+        mean_luminance: 132.6,
+        clipped_dark: 0.01,
+        clipped_bright: 0.02,
+      }
+    }
+    return HttpResponse.json(envelope(payload, 'asset uploaded'), { status: 201 })
   }),
   http.get('/api/projects/:id/assets', ({ params }) => {
     return HttpResponse.json(envelope(assetsDb.get(String(params.id)) ?? []))
+  }),
+  http.get('/api/projects/:id/assets/:assetId/qc', ({ params }) => {
+    const rows = assetsDb.get(String(params.id)) ?? []
+    const asset = rows.find((a) => a.id === String(params.assetId))
+    if (!asset) return failed('asset not found', 404)
+    if (asset.kind !== 'golden_top' && asset.kind !== 'golden_bottom') {
+      return failed('QC only applies to golden image assets', 422)
+    }
+    return HttpResponse.json(
+      envelope({
+        verdict: 'ok',
+        reasons: [],
+        sharpness: 318.4,
+        mean_luminance: 132.6,
+        clipped_dark: 0.01,
+        clipped_bright: 0.02,
+      }, 'golden QC'),
+    )
   }),
 
   // ───── bom items ─────

@@ -9,14 +9,19 @@ GET    /api/projects/{project_id}/assets/{asset_id}/binary     200 file bytes
 """
 
 import uuid
+from typing import Any
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from indusia_visual_editor.db.models import AssetKind
 from indusia_visual_editor.db.session import get_session
 from indusia_visual_editor.schemas.assets import AssetRead
+from indusia_visual_editor.services.asset.golden_qc import (
+    GoldenQcError,
+    assess_golden_qc,
+)
 from indusia_visual_editor.services.asset.image_store import (
     absolute_path,
     get_asset,
@@ -30,9 +35,31 @@ from indusia_visual_editor.utils.responses import success
 
 router = APIRouter(prefix="/api/projects/{project_id}/assets", tags=["assets"])
 
+_GOLDEN_KINDS = {AssetKind.GOLDEN_TOP, AssetKind.GOLDEN_BOTTOM}
+
 
 def _serialize(asset) -> dict:
     return AssetRead.model_validate(asset).model_dump(mode="json")
+
+
+def _is_golden_image(kind: AssetKind, mime: str | None) -> bool:
+    return kind in _GOLDEN_KINDS and bool(mime) and mime.startswith("image/")
+
+
+def _qc_or_none(file_bytes: bytes) -> dict[str, Any]:
+    """Run golden QC, mapping undecodable bytes to a fail verdict rather than
+    raising — a bad upload should warn the operator, not 500 the request."""
+    try:
+        return assess_golden_qc(file_bytes)
+    except GoldenQcError:
+        return {
+            "verdict": "fail",
+            "reasons": ["undecodable"],
+            "sharpness": 0.0,
+            "mean_luminance": 0.0,
+            "clipped_dark": 0.0,
+            "clipped_bright": 0.0,
+        }
 
 
 @router.post("", dependencies=[Depends(get_current_user)])
@@ -53,8 +80,11 @@ async def upload_asset(
         filename=file.filename or "upload.bin",
         mime=file.content_type,
     )
+    data = _serialize(asset)
+    if _is_golden_image(kind, asset.mime):
+        data["qc"] = _qc_or_none(file_bytes)
     return success(
-        data=_serialize(asset),
+        data=data,
         message="asset uploaded" if created else "asset already exists",
         status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
     )
@@ -68,6 +98,26 @@ async def list_assets_route(
     await get_project(session, project_id)
     rows = await list_assets(session, project_id)
     return success(data=[_serialize(a) for a in rows])
+
+
+@router.get("/{asset_id}/qc")
+async def get_asset_qc(
+    project_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    """Recompute golden-sample QC from the stored image (T6 / G4).
+
+    Deterministic from the bytes on disk, so no QC column is persisted. 422
+    if the asset is not a golden image."""
+    asset = await get_asset(session, project_id, asset_id)
+    if not _is_golden_image(asset.kind, asset.mime):
+        raise HTTPException(
+            status_code=422,
+            detail="QC only applies to golden_top/golden_bottom image assets",
+        )
+    file_bytes = absolute_path(asset).read_bytes()
+    return success(data=_qc_or_none(file_bytes), message="golden QC")
 
 
 @router.get("/{asset_id}/binary")

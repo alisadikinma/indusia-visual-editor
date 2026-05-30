@@ -175,6 +175,18 @@
     "goldenBottom": "Bottom side",
     "goldenBottomOptional": "Optional — skip if the bottom side has no inspectable components.",
     "replaceImage": "Replace image",
+    "qc": { "ok": "Quality OK", "warn": "Needs review", "fail": "Poor quality" },
+    "qcReason": {
+      "blur_fail": "blurry/defocused",
+      "blur_warn": "slightly soft",
+      "exposure_fail": "extreme exposure",
+      "exposure_warn": "exposure off-ideal",
+      "dark_clip_fail": "too much crushed shadow",
+      "dark_clip_warn": "some crushed shadow",
+      "bright_clip_fail": "too much blown highlight",
+      "bright_clip_warn": "some blown highlight",
+      "undecodable": "image file unreadable"
+    },
     "goldenDropTop": "Drop top-side photo",
     "goldenDropBottom": "Drop bottom-side photo",
     "goldenFileHint": "JPG / PNG · max 50 MB · 1920×1080+ recommended",

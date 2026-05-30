@@ -2,6 +2,17 @@ import { apiClient } from './client'
 
 export type AssetKind = 'bom' | 'golden_top' | 'golden_bottom' | 'drawing'
 
+export type QcVerdict = 'ok' | 'warn' | 'fail'
+
+export interface GoldenQc {
+  verdict: QcVerdict
+  reasons: string[]
+  sharpness: number
+  mean_luminance: number
+  clipped_dark: number
+  clipped_bright: number
+}
+
 export interface Asset {
   id: string
   project_id: string
@@ -11,6 +22,8 @@ export interface Asset {
   mime: string | null
   size_bytes: number | null
   uploaded_at: string
+  // Present on the upload response for golden_top/golden_bottom images (T6/G4).
+  qc?: GoldenQc
 }
 
 interface Envelope<T> {
@@ -44,4 +57,11 @@ export async function listAssets(projectId: string): Promise<Asset[]> {
 
 export function assetBinaryUrl(projectId: string, assetId: string): string {
   return `/api/projects/${projectId}/assets/${assetId}/binary`
+}
+
+export async function getAssetQc(projectId: string, assetId: string): Promise<GoldenQc> {
+  const { data } = await apiClient.get<Envelope<GoldenQc>>(
+    `/projects/${projectId}/assets/${assetId}/qc`,
+  )
+  return data.data
 }

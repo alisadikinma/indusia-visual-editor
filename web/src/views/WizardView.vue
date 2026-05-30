@@ -5,7 +5,7 @@ import { useI18n } from 'vue-i18n'
 import AppButton from '@/components/primitives/AppButton.vue'
 import { useWizardStore } from '@/stores/wizard'
 import { useProjectsStore } from '@/stores/projects'
-import type { AssetKind } from '@/api/assets'
+import type { AssetKind, GoldenQc, QcVerdict } from '@/api/assets'
 
 const previewUrls = reactive<Partial<Record<AssetKind, string>>>({})
 const dimensions = reactive<Partial<Record<AssetKind, { w: number; h: number }>>>({})
@@ -150,6 +150,21 @@ const assetName = (kind: AssetKind): string | null => {
 function dimLabel(kind: AssetKind): string {
   const d = dimensions[kind]
   return d ? `${d.w}×${d.h} px` : ''
+}
+
+function qcTone(v: QcVerdict): string {
+  return {
+    ok: 'bg-primary-50 text-primary-800',
+    warn: 'bg-amber-50 text-amber-800',
+    fail: 'bg-red-50 text-red-700',
+  }[v]
+}
+
+function qcTitle(qc: GoldenQc): string {
+  const reasons = qc.reasons.length
+    ? qc.reasons.map((r) => t(`wizard.qcReason.${r}`)).join(', ')
+    : t('wizard.qc.ok')
+  return `${reasons} · sharpness ${qc.sharpness} · luma ${qc.mean_luminance}`
 }
 
 // Review summary rows — only honest, present fields are surfaced.
@@ -543,6 +558,15 @@ const whatNext = [1, 2, 3, 4].map((n) => ({
               </span>
               <span class="text-xs text-primary-700 mt-0.5">
                 {{ t('wizard.uploadedLabel') }}<template v-if="dimLabel(side.kind)"> · {{ dimLabel(side.kind) }}</template>
+              </span>
+              <span
+                v-if="wizard.assets[side.kind]?.qc"
+                :data-testid="`wizard-qc-${side.kind}`"
+                class="mt-1.5 inline-flex items-center gap-1 h-5 px-2 rounded-full text-[11px] font-medium"
+                :class="qcTone(wizard.assets[side.kind]!.qc!.verdict)"
+                :title="qcTitle(wizard.assets[side.kind]!.qc!)"
+              >
+                {{ t(`wizard.qc.${wizard.assets[side.kind]!.qc!.verdict}`) }}
               </span>
               <span class="mt-2 text-[11px] text-ink-500 opacity-0 group-hover:opacity-100 transition">
                 {{ t('wizard.replaceImage') }}
