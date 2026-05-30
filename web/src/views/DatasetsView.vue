@@ -1,9 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { storeToRefs } from 'pinia'
 import { apiClient } from '@/api/client'
+import { useInspectionFeedbackStore } from '@/stores/inspectionFeedback'
 
 const { t, locale } = useI18n()
+
+const feedbackStore = useInspectionFeedbackStore()
+const { library, libraryTotal } = storeToRefs(feedbackStore)
+const floorPct = (count: number): number =>
+  Math.min(100, Math.round((count / (library.value?.floor ?? 100)) * 100))
 
 interface DatasetRow {
   id: string
@@ -26,6 +33,7 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+  await feedbackStore.fetchLibrary()
 })
 
 const totalRegions = computed(() => items.value.reduce((a, d) => a + d.region_count, 0))
@@ -51,6 +59,47 @@ function fmtDate(iso: string): string {
       <h1 class="text-2xl font-semibold text-ink-900">{{ t('datasets.title') }}</h1>
       <p class="text-sm text-ink-500">{{ t('datasets.summary', { n: items.length, regions: totalRegions }) }}</p>
     </header>
+
+    <section
+      v-if="library"
+      data-testid="defect-library"
+      class="rounded-xl border border-border-default bg-white shadow-card p-5 space-y-4"
+    >
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-base font-semibold text-ink-900">{{ t('datasets.library.title') }}</h2>
+          <p class="text-sm text-ink-500">
+            {{ t('datasets.library.subhead', { total: libraryTotal }) }}
+          </p>
+        </div>
+        <span class="inline-flex items-center h-6 px-2.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 shrink-0">
+          {{ t('datasets.library.notConsumed') }}
+        </span>
+      </div>
+      <p class="text-xs text-ink-500">
+        {{ t('datasets.library.floorNote', { floor: library.floor }) }}
+      </p>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div
+          v-for="c in library.classes"
+          :key="c.defect_criterion"
+          data-testid="defect-class"
+          class="rounded-lg border border-border-subtle bg-surface-raised p-3"
+        >
+          <div class="flex items-baseline justify-between gap-2">
+            <span class="text-[11px] font-mono text-ink-600 truncate">{{ c.defect_criterion }}</span>
+            <span class="text-lg font-semibold font-mono tabular-nums text-ink-900">{{ c.count }}</span>
+          </div>
+          <div class="mt-2 h-1.5 rounded-full bg-ink-100 overflow-hidden">
+            <div
+              class="h-full rounded-full"
+              :class="c.meets_floor ? 'bg-primary-500' : 'bg-ink-300'"
+              :style="{ width: `${floorPct(c.count)}%` }"
+            />
+          </div>
+        </div>
+      </div>
+    </section>
 
     <div v-if="loading" class="rounded-xl border border-border-default bg-white px-5 py-16 text-center text-sm text-ink-500">
       {{ t('common.loading') }}

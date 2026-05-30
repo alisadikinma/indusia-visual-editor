@@ -5,6 +5,7 @@ import type {
   FeedbackItem,
   FeedbackStatus,
   CuratePayload,
+  DefectLibrarySummary,
 } from '@/api/inspectionFeedback'
 
 function extractMessage(err: unknown, fallback: string): string {
@@ -16,6 +17,11 @@ export const useInspectionFeedbackStore = defineStore('inspectionFeedback', () =
   const items = ref<FeedbackItem[]>([])
   const loading = ref(false)
   const error = ref<string | null>(null)
+  const library = ref<DefectLibrarySummary | null>(null)
+
+  const libraryTotal = computed(() =>
+    (library.value?.classes ?? []).reduce((sum, c) => sum + c.count, 0),
+  )
 
   const newCount = computed(() => items.value.filter((f) => f.status === 'new').length)
   const escapeCount = computed(
@@ -34,6 +40,14 @@ export const useInspectionFeedbackStore = defineStore('inspectionFeedback', () =
       error.value = extractMessage(err, 'Gagal memuat umpan balik inspeksi')
     } finally {
       loading.value = false
+    }
+  }
+
+  async function fetchLibrary(projectId?: string): Promise<void> {
+    try {
+      library.value = await feedbackApi.getDefectLibrarySummary(projectId)
+    } catch (err) {
+      error.value = extractMessage(err, 'Gagal memuat pustaka cacat')
     }
   }
 
@@ -76,10 +90,13 @@ export const useInspectionFeedbackStore = defineStore('inspectionFeedback', () =
     items,
     loading,
     error,
+    library,
+    libraryTotal,
     newCount,
     escapeCount,
     overkillCount,
     fetchAll,
+    fetchLibrary,
     curate,
     promote,
   }

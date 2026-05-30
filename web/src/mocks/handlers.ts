@@ -934,6 +934,29 @@ ${labelTags}
     defectExamplesDb.push(example)
     return HttpResponse.json(envelope(example, 'promoted to defect example'), { status: 201 })
   }),
+  http.get('/api/defect-examples/summary', ({ request }) => {
+    const FLOOR = 100
+    const CRITERIA = [
+      'missing_component',
+      'orientation',
+      'polarity_flip',
+      'connector_pin_bending',
+      'missing_pin_connector',
+      'lifted_pin',
+      'wrong_value',
+      'misalignment',
+      'solder_short',
+    ]
+    const projectId = new URL(request.url).searchParams.get('project_id')
+    const scoped = projectId
+      ? defectExamplesDb.filter((e) => e.project_id === projectId)
+      : defectExamplesDb
+    const classes = CRITERIA.map((criterion) => {
+      const count = scoped.filter((e) => e.defect_criterion === criterion).length
+      return { defect_criterion: criterion, count, meets_floor: count >= FLOOR }
+    })
+    return HttpResponse.json(envelope({ floor: FLOOR, classes }, 'defect library inventory'))
+  }),
 
   // ───── chat (M12) ─────
   http.get('/api/projects/:id/chat', ({ params }) => {

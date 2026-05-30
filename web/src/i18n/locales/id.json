@@ -355,7 +355,13 @@
     "colCreated": "Dibuat",
     "kind": { "training": "Pelatihan", "holdout": "Holdout", "production_run": "Run edge" },
     "empty": "Belum ada dataset.",
-    "summary": "{n} dataset · {regions} anotasi total"
+    "summary": "{n} dataset · {regions} anotasi total",
+    "library": {
+      "title": "Pustaka contoh cacat",
+      "subhead": "{total} contoh cacat terkumpul dari umpan balik inspeksi, per kelas.",
+      "notConsumed": "Belum dipakai model",
+      "floorNote": "Terkumpul untuk retrain berikutnya — belum dipakai model saat ini. Kesiapan dinilai per-PCB: butuh ~{floor} contoh per kelas sebelum detektor supervised layak dilatih."
+    }
   },
   "team": {
     "kicker": "Pengaturan · tim",

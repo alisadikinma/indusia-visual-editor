@@ -50,6 +50,14 @@ vi.mock('@/api/inspectionFeedback', async (importOriginal) => {
         created_at: '2026-05-30T03:00:00Z',
       }),
     ),
+    getDefectLibrarySummary: vi.fn(async () => ({
+      floor: 100,
+      classes: [
+        { defect_criterion: 'missing_component', count: 2, meets_floor: false },
+        { defect_criterion: 'polarity_flip', count: 1, meets_floor: false },
+        { defect_criterion: 'solder_short', count: 0, meets_floor: false },
+      ],
+    })),
   }
 })
 
@@ -82,5 +90,13 @@ describe('inspectionFeedback store', () => {
     await store.promote('fb-2')
     const row = store.items.find((r) => r.id === 'fb-2')!
     expect(row.status).toBe('promoted')
+  })
+
+  it('fetchLibrary loads per-class counts and sums libraryTotal', async () => {
+    const store = useInspectionFeedbackStore()
+    await store.fetchLibrary()
+    expect(store.library?.floor).toBe(100)
+    expect(store.library?.classes).toHaveLength(3)
+    expect(store.libraryTotal).toBe(3)
   })
 })

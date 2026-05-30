@@ -363,7 +363,13 @@
       "production_run": "Edge run"
     },
     "empty": "No datasets yet.",
-    "summary": "{n} datasets · {regions} annotations total"
+    "summary": "{n} datasets · {regions} annotations total",
+    "library": {
+      "title": "Defect example library",
+      "subhead": "{total} defect examples collected from inspection feedback, by class.",
+      "notConsumed": "Not yet used by model",
+      "floorNote": "Collected for the next retrain — not yet consumed by the current model. Readiness is judged per-PCB: a class needs ~{floor} examples before a supervised detector is worth training."
+    }
   },
   "team": {
     "kicker": "Settings · team",

@@ -46,6 +46,17 @@ export interface CuratePayload {
   status?: FeedbackStatus
 }
 
+export interface DefectClassCount {
+  defect_criterion: string
+  count: number
+  meets_floor: boolean
+}
+
+export interface DefectLibrarySummary {
+  floor: number
+  classes: DefectClassCount[]
+}
+
 interface Envelope<T> {
   status: boolean
   message: string
@@ -94,6 +105,16 @@ export async function curateFeedback(
 export async function promoteFeedback(feedbackId: string): Promise<DefectExample> {
   const { data } = await apiClient.post<Envelope<DefectExample>>(
     `/inspection-feedback/${feedbackId}/promote`,
+  )
+  return data.data
+}
+
+export async function getDefectLibrarySummary(
+  projectId?: string,
+): Promise<DefectLibrarySummary> {
+  const { data } = await apiClient.get<Envelope<DefectLibrarySummary>>(
+    '/defect-examples/summary',
+    { params: projectId ? { project_id: projectId } : undefined },
   )
   return data.data
 }
