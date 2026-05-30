@@ -258,6 +258,12 @@
   },
   "gate2": {
     "kicker": "Gate 2 · promote to production",
+    "bannerReady": "Run {id} ready · final confirmation before push to edge",
+    "bannerReadyBlurb": "All thresholds passed — the model is ready to push to the inspection edges.",
+    "runLabel": "Run {id}",
+    "trainedFrom": "Trained from run {id}.",
+    "unitsCount": "{n} units",
+    "computedOnPush": "computed on push",
     "title": "Confirm model deployment",
     "subhead": "Push the trained model to all registered edges. This is the last manual step.",
     "banner": {

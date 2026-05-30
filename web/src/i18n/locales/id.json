@@ -258,6 +258,12 @@
   },
   "gate2": {
     "kicker": "Gate 2 · pasang ke produksi",
+    "bannerReady": "Run {id} siap · konfirmasi akhir sebelum pasang ke edge",
+    "bannerReadyBlurb": "Semua threshold lolos — model siap di-push ke edge inspeksi.",
+    "runLabel": "Run {id}",
+    "trainedFrom": "Dilatih dari run {id}.",
+    "unitsCount": "{n} unit",
+    "computedOnPush": "dihitung saat push",
     "title": "Konfirmasi pasang model",
     "subhead": "Dorong model terlatih ke semua edge terdaftar. Ini langkah manual terakhir.",
     "banner": {
