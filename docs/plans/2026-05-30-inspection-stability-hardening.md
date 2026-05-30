@@ -140,3 +140,242 @@ Loop: anomaly flags unknowns → HMI operator marks → confirmed defects enrich
 - The feedback-ingest endpoint is real in v1; only the *automatic edge push* is v1.5. S7 works either way.
 - Height-class defects (tombstone, billboard, lifted lead) remain a 2D limit; anomaly-on-good is the
   closest proxy — do not over-promise YOLO 2D.
+
+---
+
+## Implementation Plan
+
+> **For Claude:** REQUIRED SKILL: Use gaspol-execute to implement this plan.
+> **CRITICAL:** This plan specifies real integrations. During execution, NEVER substitute placeholders
+> for real data sources without explicit user approval. If a data source doesn't exist yet, STOP and ask.
+
+### Goal
+
+Ship the **v1 inspection-feedback loop + enrichment seed**: persist inspection outcomes returning from the
+line (HMI/operator marks `escape`/`overkill`/`confirmed`), let an engineer curate them in the existing S7
+"Inspection feedback" screen, and **promote** confirmed escapes into a real `defect_examples` library row
+(ROI crop + criterion + designator) that the future supervised retrain consumes. Software-platform only —
+NO `auto-inspect-edge` / `auto-inspect-service` source changes. Live automatic edge-push stays v1.5; the
+ingest endpoint is real now and fed manually/by script.
+
+### Architecture Context (from CLAUDE.md + code research)
+
+- **Migrations** live at repo-root `alembic/versions/` (NOT under `src/`). Next = `0012_inspection_feedback`,
+  `down_revision="0011_auth"`. Pattern: `op.create_table` with `postgresql.UUID(as_uuid=True)` PK, FK via
+  `sa.ForeignKey("...", ondelete=...)`, CHECK via inline `sa.CheckConstraint("col IN ('a','b')", name="ck_*")`,
+  `op.create_index("ix_<t>_<c>", "<t>", [...])`; `downgrade()` mirrors with `op.drop_table`.
+- **ORM** `src/indusia_visual_editor/db/models.py`: `Base(DeclarativeBase)`, `Mapped[...]`/`mapped_column`,
+  `PG_UUID(as_uuid=True)` PK `default=uuid.uuid4`, FK CASCADE + `index=True`, `JSONB`, `DateTime(timezone=True)`
+  `server_default=func.now()`, CHECK enums as `String(16)` + `CheckConstraint` in `__table_args__`
+  (match 0011 `users.role`), composite constraints in `__table_args__`, `relationship(back_populates=...)`.
+- **Routes** `src/indusia_visual_editor/routes/*.py`: `APIRouter(prefix="/api/...")`; mutations carry
+  `dependencies=[Depends(get_current_user)]`, GETs stay public (v1 decision); inject
+  `session: AsyncSession = Depends(get_session)`; success path returns `success(data=..., message=...,
+  status_code=...)` from `utils/responses.py`; 404/409 raise `HTTPException(status_code=..., detail=...)`
+  (main.py handlers build the envelope); `_serialize(row)=Schema.model_validate(row).model_dump(mode="json")`.
+  Register the new router in `src/indusia_visual_editor/main.py` next to the others.
+- **File upload** mirrors `routes/assets.py` + `services/asset/image_store.py` (sha256 dedup, path
+  `<IVE_STORAGE_ROOT>/{project_id}/{kind}/{sha}{ext}`, `AssetTooLargeError`→413). ROI crops use a new
+  `services/feedback/roi_store.py save_roi(project_id, file_bytes, filename)->(rel_path, sha256)` writing to
+  `{project_id}/feedback_roi/{sha}{ext}` — kept OUT of the `assets` table (ROI ≠ project source asset).
+- **Schemas** `src/indusia_visual_editor/schemas/`: request `ConfigDict(extra="ignore")`, response
+  `ConfigDict(from_attributes=True)`, `Literal[...]` for closed sets.
+- **Backend tests** `tests/routes/*`: per-file `client` (httpx `ASGITransport(app=app)`) + `query_session`
+  fixtures, `pytestmark = skipif(not IVE_DATABASE_URL)`; conftest overrides `get_current_user`→synthetic
+  engineer; assert `r.json()["status"]` + payload under `["data"]`. `pytest-asyncio` mode auto.
+- **FE**: Pinia Composition store `web/src/stores/*.ts` + axios module `web/src/api/*.ts` over `apiClient`
+  (baseURL `/api`, unwrap `data.data`); router `web/src/router/index.ts` (`meta.titleKey`, lazy import);
+  views are plain roots under the global `AppShell`; **sidebar nav is `web/src/components/layout/AppSidebar.vue`**
+  (the Figma nav item `Sb/Feedback` was design-only — FE nav must be added here); i18n `en.json`/`id.json`;
+  dev MSW handlers in `web/src/mocks/handlers.ts`. Figma S7 frames: ID `272:2`, EN `279:2`.
+- **Inspection logic (ai-visual-inspection-expert):** promote-eligible = `operator_mark=='escape'` (real
+  missed defect) AND `defect_criterion` ∈ the 9 (`data/defect_detector_mapping.yaml`) AND `roi_path` present.
+  `overkill` = hard-negative, NOT a defect example → promotion rejected in v1 (hard-negative mining is a
+  training-side v1.5 concern). The 9 criteria: missing_component, orientation, polarity_flip,
+  connector_pin_bending, missing_pin_connector, lifted_pin, wrong_value, misalignment, solder_short.
+
+### Tech Stack
+
+FastAPI 0.121 async + SQLAlchemy 2 async + Alembic + asyncpg + pydantic v2; pytest-asyncio + httpx
+ASGITransport. Vue 3.5 + Pinia 2 (Composition) + axios + vue-router + vue-i18n 10 + Tailwind 3 + MSW 2 +
+Vitest. structlog `get_logger`. No new runtime deps (opencv is for G2/G4, not this plan).
+
+### Data Integration Map
+
+| Feature | Data Source | Hook/API | Exists? | Action |
+|---|---|---|---|---|
+| Feedback persistence | `inspection_feedback` table | new ORM model + 0012 migration | No | Create (real table) |
+| Promote target | `defect_examples` table | new ORM model + 0012 migration | No | Create (real table) |
+| ROI crop storage | `IVE_STORAGE_ROOT/{pid}/feedback_roi/` | `services/feedback/roi_store.save_roi` | No | Create (reuses sha256/ext pattern) |
+| Bearer gate | `get_current_user` | `services.auth.dependencies` | Yes | Use existing |
+| DB session | `get_session` | `db.session` | Yes | Use existing |
+| Envelope | `success()` / `HTTPException` | `utils/responses.py` + main handlers | Yes | Use existing |
+| Criterion validity | 9 defect criteria | `data/defect_detector_mapping.yaml` keys | Yes | Load + validate in promote |
+| FE HTTP | `apiClient` (`/api`, bearer, 401-refresh) | `web/src/api/client.ts` | Yes | Use existing |
+| FE feedback calls | new `api/inspectionFeedback.ts` | wraps apiClient | No | Create |
+| FE state | new `useInspectionFeedbackStore` | Pinia | No | Create |
+| FE screen | `InspectionFeedbackView.vue` | route `/feedback` | No | Create (Figma S7 272:2/279:2) |
+| FE nav item | `AppSidebar.vue` WORKSPACE section | — | Partial | Add entry (Figma design exists) |
+| Dev mocks | `feedbackDb` + handlers | `web/src/mocks/handlers.ts` | No | Create |
+| Live edge push | edge inspection results | — | **OUT (v1.5)** | Do NOT build; ingest endpoint stands ready |
+
+### Phase A — DB models + migration 0012 (backend, no UI)
+
+**Estimated time:** 14 min
+**Files:** Modify `src/indusia_visual_editor/db/models.py`; Create `alembic/versions/0012_inspection_feedback.py`; Test `tests/db/test_inspection_feedback_models.py`
+**Steps:**
+1. Write failing test for InspectionFeedback + DefectExample ORM roundtrip + CHECK rejection (bad `operator_mark`) + project-cascade delete. Expected error: `ImportError: cannot import name 'InspectionFeedback' from indusia_visual_editor.db.models`.
+2. Run it (DB-gated), confirm it fails for that reason.
+3. Add `InspectionFeedback` (id, project_id FK CASCADE+index, edge_id FK SET NULL nullable, train_run_id FK SET NULL nullable, designator String(32) nullable, model_verdict String(16), operator_mark String(16), defect_criterion String(40) nullable, roi_path Text nullable, roi_sha256 String(64) nullable, status String(16) default 'new', inspection_ts tz nullable, created_at server_default now()) with `__table_args__` CHECK constraints (`ck_inspection_feedback_verdict` pass/fail/uncertain; `ck_..._mark` confirmed/escape/overkill; `ck_..._status` new/curated/promoted/dismissed) + `DefectExample` (id, project_id FK CASCADE+index, source_feedback_id FK SET NULL nullable, designator String(32) nullable, defect_criterion String(40) not null, roi_path Text not null, roi_sha256 String(64) not null, created_at). Add `relationship` back-refs on `Project`.
+4. Write migration `0012_inspection_feedback` (down_revision `0011_auth`) creating both tables + indexes; downgrade drops both.
+5. Run `alembic upgrade head` then `downgrade -1` then `upgrade head` against dev DB — clean. Run the ORM test, confirm pass.
+6. Commit: `feat(fb): inspection_feedback + defect_examples tables (0012)`
+
+**Verification:**
+- [ ] `alembic upgrade head` / `downgrade -1` / `upgrade head` cycle clean
+- [ ] ORM roundtrip + CHECK rejection + cascade test passes (DB-gated)
+- [ ] No placeholder/TODO in new code
+- [ ] `black`/`isort`/`flake8` clean on changed files
+
+### Phase B — Pydantic schemas
+
+**Estimated time:** 8 min
+**Files:** Create `src/indusia_visual_editor/schemas/inspection_feedback.py`; Test `tests/schemas/test_inspection_feedback_schemas.py`
+**Steps:**
+1. Write failing test asserting `FeedbackIngest` rejects an out-of-set `operator_mark` and `FeedbackRead.model_validate(orm_row)` works. Expected error: `ModuleNotFoundError: ...schemas.inspection_feedback`.
+2. Run, confirm fail.
+3. Implement `FeedbackIngest` (extra="ignore"; designator, model_verdict Literal, operator_mark Literal, defect_criterion optional, inspection_ts optional, edge_id/train_run_id optional), `FeedbackCurate` (operator_mark + status Literals), `FeedbackRead` + `DefectExampleRead` (from_attributes).
+4. Run tests, confirm pass.
+5. Commit: `feat(fb): pydantic schemas for inspection feedback`
+
+**Verification:**
+- [ ] `tsc`-equivalent: `mypy`/import clean; schema validation test passes
+- [ ] Literals match the table CHECK sets exactly
+- [ ] No placeholder/TODO
+
+### Phase C — ROI storage service
+
+**Estimated time:** 8 min
+**Files:** Create `src/indusia_visual_editor/services/feedback/__init__.py` + `roi_store.py`; Test `tests/services/feedback/test_roi_store.py`
+**Steps:**
+1. Write failing test (tmp `IVE_STORAGE_ROOT`): `save_roi` writes bytes, returns `(rel_path, sha256)` with path `{pid}/feedback_roi/{sha}{ext}`, dedups identical bytes. Expected error: `ModuleNotFoundError`.
+2. Run, confirm fail.
+3. Implement `save_roi(project_id, file_bytes, filename, mime=None)` reusing the hashing/ext/size-cap logic from `image_store` (raise `AssetTooLargeError` over `max_asset_bytes`); return relative path + sha. Add `absolute_roi_path(rel)` helper.
+4. Run tests, confirm pass.
+5. Commit: `feat(fb): ROI crop storage service`
+
+**Verification:**
+- [ ] save_roi writes file + dedups; path layout correct (non-DB test, tmp dir)
+- [ ] oversize raises 413-mapped error
+- [ ] No placeholder/TODO
+
+### Phase D — Ingest + list endpoints
+
+**Estimated time:** 12 min
+**Files:** Create `src/indusia_visual_editor/routes/inspection_feedback.py`; Modify `src/indusia_visual_editor/main.py` (include_router); Test `tests/routes/test_inspection_feedback.py`
+**Steps:**
+1. Write failing test: `POST /api/projects/{id}/inspection-feedback` (multipart Form fields + optional ROI file) → 201 + envelope + row persisted; `GET /api/projects/{id}/inspection-feedback?status=new` returns only new. Expected error: 404 (route not registered).
+2. Run (DB-gated), confirm fail.
+3. Implement router: `POST` (bearer-gated; `Form(...)` metadata + optional `UploadFile`; `get_project` 404 guard; if file → `save_roi`; insert row) returns 201 `success`; `GET` (public) lists by optional `status` Query, ordered by `created_at` desc. Register in main.py.
+4. Run tests, confirm pass.
+5. Commit: `feat(fb): inspection-feedback ingest + list endpoints`
+
+**Verification:**
+- [ ] POST persists row (+ ROI when present), 201 envelope; GET filters by status
+- [ ] POST requires bearer (401 without — covered by existing middleware test pattern); GET public
+- [ ] No placeholder/TODO; flake8 clean
+
+### Phase E — Curate + promote endpoints
+
+**Estimated time:** 12 min
+**Files:** Modify `routes/inspection_feedback.py`; Test (extend) `tests/routes/test_inspection_feedback.py`
+**Steps:**
+1. Write failing test: `PUT /api/inspection-feedback/{fid}` updates status/mark (404 unknown); `POST /api/inspection-feedback/{fid}/promote` on a confirmed **escape** with valid criterion + ROI creates a `DefectExample` + sets status `promoted`; promote on an **overkill** → 409; promote without ROI/criterion → 409. Expected error: 404 (routes absent).
+2. Run, confirm fail.
+3. Implement `PUT` (bearer; load-or-404; set operator_mark/status; flush/refresh) and `POST .../promote` (bearer; load-or-404; guard mark==escape & defect_criterion ∈ yaml keys & roi_path present else 409; create DefectExample from the row; status='promoted'). Load the 9 criteria from `data/defect_detector_mapping.yaml`.
+4. Run tests, confirm pass.
+5. Commit: `feat(fb): curate + promote-to-defect-library endpoints`
+
+**Verification:**
+- [ ] curate updates + 404; promote creates DefectExample + flips status
+- [ ] promote rejects overkill / missing-ROI / invalid-criterion with 409 (inspection-logic gate)
+- [ ] No placeholder/TODO; flake8 clean
+
+### Phase F — FE api module
+
+**Estimated time:** 6 min
+**Files:** Create `web/src/api/inspectionFeedback.ts`; Test `web/src/api/__tests__/inspectionFeedback.spec.ts` (MSW)
+**Steps:**
+1. Write failing test: `listFeedback('new')` returns parsed rows from a mocked envelope. Expected error: module not found.
+2. Run, confirm fail.
+3. Implement typed `FeedbackItem`/`DefectExample` interfaces + `listFeedback(status?)`, `ingestFeedback(projectId, payload, roiFile?)` (FormData), `curateFeedback(fid, body)`, `promoteFeedback(fid)` over `apiClient`, unwrapping `data.data`.
+4. Run, confirm pass.
+5. Commit: `feat(fb): FE inspectionFeedback api module`
+
+**Verification:**
+- [ ] `vue-tsc` clean; api spec passes against MSW
+- [ ] Paths are bare (`/projects/.../inspection-feedback`), no double `/api`
+- [ ] No placeholder/TODO
+
+### Phase G — FE Pinia store
+
+**Estimated time:** 8 min
+**Files:** Create `web/src/stores/inspectionFeedback.ts`; Test `web/src/stores/__tests__/inspectionFeedback.spec.ts`
+**Steps:**
+1. Write failing test: `fetchAll()` populates items + `newCount`/`escapeCount` getters; `promote(id)` flips that row to promoted. Expected error: store import fails.
+2. Run, confirm fail.
+3. Implement `useInspectionFeedbackStore` (items, loading, error refs; `newCount`/`escapeCount`/`overkillCount` computed; `fetchAll(status?)`, `curate(id, body)`, `promote(id)` with optimistic update + `extractMessage` error handling mirroring `stores/edges.ts`).
+4. Run, confirm pass.
+5. Commit: `feat(fb): useInspectionFeedbackStore`
+
+**Verification:**
+- [ ] store spec passes (fetch + counts + curate + promote)
+- [ ] error path sets `error` via extractMessage
+- [ ] No placeholder/TODO
+
+### Phase H — FE view + route + sidebar nav + i18n
+
+**Estimated time:** 14 min
+
+| Phase | Code Deliverable | Design Deliverable | Verification |
+|---|---|---|---|
+| H | InspectionFeedbackView + route + AppSidebar entry | Figma S7 frames `272:2`(ID)/`279:2`(EN) + §A.6 tokens | vue-tsc + component test + design-token compliance |
+
+**Files:** Create `web/src/views/InspectionFeedbackView.vue`; Modify `web/src/router/index.ts`, `web/src/components/layout/AppSidebar.vue`, `web/src/locales/en.json` + `id.json`; Test `web/src/views/__tests__/InspectionFeedbackView.spec.ts`
+**Steps:**
+1. Write failing test: view mounts, calls `store.fetchAll` on mount, renders a row per item, clicking "Defect lolos" calls `store.curate(...,{operator_mark:'escape'})`. Expected error: view import fails.
+2. Run, confirm fail.
+3. Build the view per the S7 Figma (explainer banner + table: time/board/model-verdict pill/note/action chips escape+overkill + resolved pills), using foundation Tailwind tokens, `useI18n` keys under `feedback.*`, fetch in `onMounted`, toasts via `useToastStore`. Add route `{ path:'/feedback', name:'inspection-feedback', component: () => import('@/views/InspectionFeedbackView.vue'), meta:{ titleKey:'nav.feedback' } }`. Add the WORKSPACE nav item (label `nav.feedback`, `to:'/feedback'`, speech-bubble Lucide icon) in `AppSidebar.vue`. Add `nav.feedback` + `feedback.*` keys to en/id.
+4. Run tests + `vue-tsc --noEmit` + `eslint`, confirm pass.
+5. Commit: `feat(fb): Inspection feedback view + route + sidebar nav`
+
+**Verification:**
+- [ ] `vue-tsc --noEmit` + eslint clean
+- [ ] View renders rows from `useInspectionFeedbackStore`; escape/overkill actions call store; resolved rows show marked state
+- [ ] Sidebar shows "Umpan balik"/"Feedback" under WORKSPACE → navigates to /feedback
+- [ ] Only §A.6 tokens (no ad-hoc colors); no placeholder/TODO
+
+### Phase I — MSW dev handlers + build verification
+
+**Estimated time:** 8 min
+**Files:** Modify `web/src/mocks/handlers.ts`; Test (none new — verification phase)
+**Steps:**
+1. Write failing test: store spec run in dev/MSW mode hits the 4 mocked endpoints and returns seeded feedback rows. Expected error: MSW 404 (handlers absent).
+2. Run, confirm fail.
+3. Add `feedbackDb` (≈6 seed rows: mix of escape/overkill/confirmed, 2 resolved) + `defectExamplesDb` + handlers for POST/GET/PUT/promote mirroring the envelope; promote moves a row + appends a defect example.
+4. Run full FE suite + `vite build`; confirm green.
+5. Commit: `feat(fb): MSW handlers for inspection feedback`
+
+**Verification:**
+- [ ] Full `vitest` suite green; `vite build` passes; `vue-tsc` clean
+- [ ] MSW promote/curate mutate the in-memory db consistently
+- [ ] No placeholder/TODO
+
+### Explicitly OUT of scope (do NOT build here)
+
+- Live edge push (edge POSTs feedback automatically) — **v1.5**; the ingest endpoint stands ready.
+- Supervised-trainer **consumption** of `defect_examples` (assembling them into the YOLO training set sent
+  to `auto-inspect-service`) — next milestone (touches the training-start service); promote producing a real
+  `DefectExample` row is the honest v1 boundary, not a stub.
+- overkill → hard-negative mining; G2 opencv registration; G1 multi-golden training payload; G5 stable split;
+  G6 drift re-eval — separate milestones in this same design doc.
