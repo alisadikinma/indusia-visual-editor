@@ -78,7 +78,9 @@ Thumbs.db
 desktop.ini
 
 # --- Claude Code + Playwright MCP local caches ---
-.claude/
+# Ignore Claude local caches/settings, but DO track project skills (checked into repo).
+.claude/*
+!.claude/skills/
 .playwright-mcp/
 
 # --- Poetry ---
