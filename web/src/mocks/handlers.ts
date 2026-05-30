@@ -371,6 +371,51 @@ export const handlers = [
   http.post('/api/auth/logout', () => HttpResponse.json(envelope(null, 'logged out'))),
   http.get('/api/auth/me', () => HttpResponse.json(envelope(SAMPLE_USER))),
 
+  // ───── dashboard ─────
+  http.get('/api/dashboard/summary', () => {
+    const cutoff = Date.now() - 5 * 60_000 // ONLINE_WINDOW = 5 min
+    const statusCount = (s: MockProject['status']) =>
+      projectsDb.filter((p) => p.status === s).length
+    const drafting = statusCount('drafting')
+    const training = statusCount('training')
+    const deployed = statusCount('deployed')
+    const failed = statusCount('failed')
+    // latest mAP is only real once a project has a succeeded train run; in the
+    // mock we surface it for deployed projects and leave the rest null.
+    const mapFor = (p: MockProject): number | null =>
+      p.status === 'deployed' ? 0.942 : null
+    const projects = projectsDb.map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      status: p.status,
+      updated_at: p.updated_at,
+      bom_count: (bomDb.get(p.id) ?? []).length,
+      latest_map: mapFor(p),
+    }))
+    const maps = projects.map((p) => p.latest_map).filter((m): m is number => m != null)
+    return HttpResponse.json(
+      envelope({
+        stats: {
+          active_projects: drafting + training + deployed,
+          drafting,
+          training,
+          deployed,
+          failed,
+          models_deployed: modelsDb.length,
+          edges_online: edgesDb.filter(
+            (e) => e.last_seen_at != null && new Date(e.last_seen_at).getTime() >= cutoff,
+          ).length,
+          edges_total: edgesDb.length,
+          avg_map: maps.length
+            ? Math.round((maps.reduce((a, b) => a + b, 0) / maps.length) * 1e4) / 1e4
+            : null,
+        },
+        projects,
+      }),
+    )
+  }),
+
   // ───── projects ─────
   http.get('/api/projects', () => HttpResponse.json(envelope(projectsDb))),
   http.get('/api/projects/:id', ({ params }) => {
