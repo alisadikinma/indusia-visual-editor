@@ -19,246 +19,256 @@ onMounted(async () => {
   await training.loadGate1(projectId.value, 'top')
 })
 
-const buckets = computed(() => {
-  const stats = training.datasetStats
-  if (!stats) return { sufficient: 0, moderate: 0, at_risk: 0 }
-  return stats.per_designator.reduce(
-    (acc, item) => {
-      acc[item.bucket]++
-      return acc
-    },
-    { sufficient: 0, moderate: 0, at_risk: 0 } as Record<string, number>,
-  )
+const stats = computed(() => training.datasetStats)
+const perDesignator = computed(() => stats.value?.per_designator ?? [])
+const componentCount = computed(() => perDesignator.value.length)
+const maxCount = computed(() => Math.max(1, ...perDesignator.value.map((p) => p.count)))
+
+const bucketMeta: Record<'sufficient' | 'moderate' | 'at_risk', { badge: string; bar: string; key: string }> = {
+  sufficient: { badge: 'bg-primary-50 text-primary-700', bar: 'bg-primary-500', key: 'gate1.bucketSufficient' },
+  moderate: { badge: 'bg-amber-50 text-amber-700', bar: 'bg-amber-400', key: 'gate1.bucketModerate' },
+  at_risk: { badge: 'bg-red-50 text-red-700', bar: 'bg-red-500', key: 'gate1.bucketAtRisk' },
+}
+
+// Considerations are derived from the real per-component buckets + coverage
+// ratio — no fabricated GPU/time numbers.
+const considerations = computed(() => {
+  const out: { tone: 'danger' | 'warning' | 'info' | 'ok'; text: string }[] = []
+  if (!stats.value) return out
+  for (const r of perDesignator.value.filter((p) => p.bucket === 'at_risk')) {
+    out.push({ tone: 'danger', text: t('gate1.considAtRisk', { d: r.designator, n: r.count }) })
+  }
+  const moderate = perDesignator.value.filter((p) => p.bucket === 'moderate')
+  if (moderate.length) {
+    out.push({
+      tone: 'warning',
+      text: t('gate1.considModerate', { list: moderate.map((m) => m.designator).join(', ') }),
+    })
+  }
+  out.push({
+    tone: 'info',
+    text: t('gate1.considCoverage', { pct: Math.round((stats.value.coverage_ratio ?? 0) * 100) }),
+  })
+  if (!out.some((c) => c.tone === 'danger' || c.tone === 'warning')) {
+    out.unshift({ tone: 'ok', text: t('gate1.considAllGood') })
+  }
+  return out
 })
 
-function bucketKey(b: 'sufficient' | 'moderate' | 'at_risk'): string {
-  return b === 'at_risk' ? 'gate1.bucketAtRisk' : `gate1.bucket${b.charAt(0).toUpperCase()}${b.slice(1)}`
+const considToneClass: Record<string, string> = {
+  danger: 'text-red-800',
+  warning: 'text-amber-800',
+  info: 'text-amber-900/70',
+  ok: 'text-primary-800',
 }
 
 async function approveAndStart() {
   const run = await training.start(projectId.value)
   if (run) {
-    await router.push({
-      name: 'training',
-      params: { id: projectId.value, runId: run.id },
-    })
+    await router.push({ name: 'training', params: { id: projectId.value, runId: run.id } })
   }
 }
-
 function backToLabeling() {
   router.push({ name: 'labeling', params: { id: projectId.value } })
 }
 </script>
 
 <template>
-  <div class="p-8 max-w-[1200px] mx-auto space-y-6">
-    <header class="space-y-1">
-      <p class="text-xs font-mono uppercase tracking-wider text-ink-500">
-        {{ t('gate1.kicker') }}
-      </p>
-      <h1 class="text-2xl font-semibold text-ink-900">{{ t('gate1.title') }}</h1>
-      <p class="text-sm text-ink-500">{{ t('gate1.subhead') }}</p>
-    </header>
-
+  <div class="p-8 max-w-[1280px] mx-auto space-y-6">
+    <!-- HITL banner -->
     <div
-      class="rounded-xl bg-primary-50 border border-primary-200 px-5 py-4 flex items-start gap-3"
+      data-testid="gate1-hitl"
+      class="flex items-start justify-between gap-4 rounded-xl bg-primary-50 border-2 border-primary-300 px-5 py-4"
     >
-      <span class="h-6 w-6 rounded-full bg-primary-700 text-white grid place-items-center text-xs shrink-0">
-        ⏸
-      </span>
-      <div>
-        <p class="text-sm font-semibold text-primary-900">{{ t('gate1.hitlTitle') }}</p>
-        <p class="text-sm text-primary-900/80">{{ t('gate1.hitlBlurb') }}</p>
+      <div class="flex items-start gap-3">
+        <span class="h-7 w-7 grid place-items-center rounded-full bg-primary-600 text-white text-sm shrink-0">✓</span>
+        <div>
+          <p class="text-sm font-semibold text-primary-900">{{ t('gate1.hitlTitle') }}</p>
+          <p class="text-sm text-primary-900/80">{{ t('gate1.hitlBlurb') }}</p>
+        </div>
       </div>
+      <button
+        type="button"
+        data-testid="gate1-tech-toggle"
+        class="inline-flex items-center gap-2 h-8 px-3 rounded-full border text-xs font-mono shrink-0 transition"
+        :class="engineer.enabled ? 'border-engineer-300 bg-engineer-50 text-engineer-800' : 'border-border-default bg-white text-ink-500 hover:text-ink-700'"
+        :aria-pressed="engineer.enabled"
+        @click="engineer.toggle()"
+      >
+        <span class="opacity-80">&lt;/&gt;</span>
+        {{ t('gate1.techDetails') }}
+        <span class="ml-1 inline-flex h-4 w-7 rounded-full p-0.5 transition" :class="engineer.enabled ? 'bg-engineer-600' : 'bg-ink-300'">
+          <span class="h-3 w-3 rounded-full bg-white transition-transform" :class="engineer.enabled ? 'translate-x-3' : ''" />
+        </span>
+      </button>
     </div>
 
-    <div
-      v-if="training.error"
-      class="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"
-    >
+    <div v-if="training.error" class="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
       {{ training.error }}
     </div>
 
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <section
-        class="lg:col-span-2 rounded-xl bg-white border border-ink-200 shadow-card p-5 space-y-4"
-      >
-        <header class="flex items-center justify-between">
-          <h2 class="text-base font-semibold text-ink-900">{{ t('gate1.datasetTitle') }}</h2>
-          <span class="text-xs font-mono text-ink-500">
-            {{ training.datasetStats?.total_regions ?? 0 }} {{ t('gate1.regions') }}
-          </span>
-        </header>
+    <!-- Readiness + considerations -->
+    <div class="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-6 items-start">
+      <section class="rounded-xl bg-white border border-border-default shadow-card p-6 space-y-5">
+        <div>
+          <h2 class="text-lg font-semibold text-ink-900">{{ t('gate1.datasetTitle') }}</h2>
+          <p class="mt-1 text-sm text-ink-500">
+            {{ t('gate1.readinessLine', { total: stats?.total_regions ?? 0, n: componentCount }) }}
+          </p>
+        </div>
 
-        <div class="grid grid-cols-3 gap-3">
-          <div class="rounded-lg bg-success/5 border border-success/30 p-3">
-            <p class="text-[11px] font-mono uppercase tracking-wider text-success">
-              {{ t('gate1.bucketSufficient') }}
-            </p>
-            <p class="mt-0.5 text-2xl font-semibold font-mono tabular-nums text-success">
-              {{ buckets.sufficient }}
-            </p>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div data-testid="gate1-stat-annotations" class="rounded-lg bg-surface-raised border border-border-subtle p-3">
+            <p class="text-[11px] font-mono uppercase tracking-wider text-ink-500">{{ t('gate1.statAnnotations') }}</p>
+            <p class="mt-0.5 text-2xl font-semibold font-mono tabular-nums text-ink-900">{{ stats?.total_regions ?? 0 }}</p>
+            <p class="text-[11px] text-ink-400">{{ t('gate1.annotationsAcross', { n: componentCount }) }}</p>
           </div>
-          <div class="rounded-lg bg-warning/5 border border-warning/30 p-3">
-            <p class="text-[11px] font-mono uppercase tracking-wider text-warning">
-              {{ t('gate1.bucketModerate') }}
-            </p>
-            <p class="mt-0.5 text-2xl font-semibold font-mono tabular-nums text-warning">
-              {{ buckets.moderate }}
-            </p>
+          <div class="rounded-lg bg-surface-raised border border-border-subtle p-3">
+            <p class="text-[11px] font-mono uppercase tracking-wider text-ink-500">{{ t('gate1.statComponents') }}</p>
+            <p class="mt-0.5 text-2xl font-semibold font-mono tabular-nums text-ink-900">{{ componentCount }}</p>
+            <p class="text-[11px] text-ink-400">{{ t('gate1.componentsSub') }}</p>
           </div>
-          <div class="rounded-lg bg-danger/5 border border-danger/30 p-3">
-            <p class="text-[11px] font-mono uppercase tracking-wider text-danger">
-              {{ t('gate1.bucketAtRisk') }}
+          <div class="rounded-lg bg-surface-raised border border-border-subtle p-3">
+            <p class="text-[11px] font-mono uppercase tracking-wider text-ink-500">{{ t('gate1.statCoverage') }}</p>
+            <p class="mt-0.5 text-2xl font-semibold font-mono tabular-nums text-ink-900">
+              {{ Math.round((stats?.coverage_ratio ?? 0) * 100) }}%
             </p>
-            <p class="mt-0.5 text-2xl font-semibold font-mono tabular-nums text-danger">
-              {{ buckets.at_risk }}
+            <p class="text-[11px] text-ink-400">{{ t('gate1.coverageSub') }}</p>
+          </div>
+          <div class="rounded-lg bg-surface-raised border border-border-subtle p-3">
+            <p class="text-[11px] font-mono uppercase tracking-wider text-ink-500">{{ t('gate1.statSides') }}</p>
+            <p class="mt-0.5 text-2xl font-semibold font-mono tabular-nums text-ink-900">
+              {{ stats?.side_breakdown.top ?? 0 }} / {{ stats?.side_breakdown.bottom ?? 0 }}
             </p>
+            <p class="text-[11px] text-ink-400">{{ t('gate1.sidesSub') }}</p>
           </div>
         </div>
 
-        <div class="rounded-lg border border-ink-200 overflow-hidden">
-          <table class="w-full text-sm">
-            <thead class="bg-ink-50 text-xs font-mono uppercase tracking-wider text-ink-500">
-              <tr>
-                <th class="text-left px-4 py-2 font-medium">{{ t('gate1.colDesignator') }}</th>
-                <th class="text-right px-4 py-2 font-medium">{{ t('gate1.colCount') }}</th>
-                <th class="text-left px-4 py-2 font-medium">{{ t('gate1.colBucket') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="row in training.datasetStats?.per_designator ?? []"
-                :key="row.designator"
-                class="border-t border-ink-100"
-              >
-                <td class="px-4 py-2 font-mono">{{ row.designator }}</td>
-                <td class="px-4 py-2 text-right font-mono tabular-nums">{{ row.count }}</td>
-                <td class="px-4 py-2">
-                  <span
-                    class="inline-flex items-center h-5 px-2 rounded-full text-[11px] font-medium"
-                    :class="
-                      row.bucket === 'sufficient'
-                        ? 'bg-success/10 text-success'
-                        : row.bucket === 'moderate'
-                          ? 'bg-warning/10 text-warning'
-                          : 'bg-danger/10 text-danger'
-                    "
-                  >
-                    {{ t(bucketKey(row.bucket)) }}
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="space-y-4">
-        <div class="rounded-xl bg-white border border-ink-200 shadow-card p-5">
-          <h3 class="text-base font-semibold text-ink-900">{{ t('gate1.modeTitle') }}</h3>
-          <div class="mt-3 space-y-2">
-            <label
-              class="flex items-start gap-3 rounded-lg border p-3 cursor-pointer transition"
-              :class="
-                training.trainMode === 'scratch'
-                  ? 'border-primary-300 bg-primary-50'
-                  : 'border-ink-200 hover:bg-ink-50'
-              "
-            >
-              <input v-model="training.trainMode" type="radio" value="scratch" class="mt-1" />
-              <div>
-                <p class="text-sm font-medium text-ink-900">{{ t('gate1.modeScratch') }}</p>
-                <p class="text-xs text-ink-500">{{ t('gate1.modeScratchBlurb') }}</p>
-              </div>
-            </label>
-            <label
-              class="flex items-start gap-3 rounded-lg border p-3 cursor-not-allowed opacity-60 border-ink-200"
-              :title="t('gate1.modeContinueTooltip')"
-            >
-              <input type="radio" value="continue" class="mt-1" disabled />
-              <div>
-                <p class="text-sm font-medium text-ink-500">{{ t('gate1.modeContinue') }}</p>
-                <p class="text-xs text-ink-400">{{ t('gate1.modeContinueTooltip') }}</p>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        <div class="rounded-xl bg-white border border-ink-200 shadow-card p-5">
-          <h3 class="text-base font-semibold text-ink-900">{{ t('gate1.considerationsTitle') }}</h3>
-          <ul class="mt-3 space-y-2 text-sm text-ink-600">
-            <li class="flex gap-2">
-              <span class="text-primary-700 mt-0.5">·</span>
-              <span>{{ t('gate1.consid1') }}</span>
-            </li>
-            <li class="flex gap-2">
-              <span class="text-primary-700 mt-0.5">·</span>
-              <span>{{ t('gate1.consid2') }}</span>
-            </li>
-            <li class="flex gap-2">
-              <span class="text-primary-700 mt-0.5">·</span>
-              <span>{{ t('gate1.consid3') }}</span>
+        <div data-testid="gate1-coverage">
+          <p class="text-[11px] font-mono uppercase tracking-wider text-ink-500 mb-2">{{ t('gate1.coverageTitle') }}</p>
+          <ul class="space-y-2">
+            <li v-for="row in perDesignator" :key="row.designator" class="flex items-center gap-3">
+              <span class="w-16 text-sm font-mono text-ink-900 truncate">{{ row.designator }}</span>
+              <span class="w-14 text-right text-xs font-mono tabular-nums text-ink-500">
+                {{ t('gate1.exampleCount', { n: row.count }) }}
+              </span>
+              <span class="inline-flex items-center h-5 px-2 rounded-full text-[11px] font-medium" :class="bucketMeta[row.bucket].badge">
+                {{ t(bucketMeta[row.bucket].key) }}
+              </span>
+              <span class="flex-1 h-2 rounded-full bg-ink-100 overflow-hidden">
+                <span class="block h-full rounded-full" :class="bucketMeta[row.bucket].bar" :style="{ width: Math.max(6, Math.round((row.count / maxCount) * 100)) + '%' }" />
+              </span>
             </li>
           </ul>
         </div>
       </section>
+
+      <!-- Things to consider -->
+      <aside data-testid="gate1-considerations" class="rounded-xl bg-amber-50 border border-amber-200 p-5 space-y-4">
+        <p class="flex items-center gap-1.5 text-sm font-semibold text-amber-900">
+          <span>⚠</span> {{ t('gate1.considerationsTitle') }}
+        </p>
+        <ul class="space-y-3">
+          <li v-for="(c, i) in considerations" :key="i" class="text-[13px] leading-snug" :class="considToneClass[c.tone]">
+            {{ c.text }}
+          </li>
+        </ul>
+      </aside>
     </div>
 
+    <!-- Engineer hyperparameters -->
     <section
       v-if="engineer.enabled"
+      data-testid="gate1-hyperparams"
       class="rounded-xl bg-engineer-50 border border-engineer-200 p-5"
     >
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center gap-2">
-          <span
-            class="inline-flex items-center h-5 px-2 rounded-full bg-engineer-700 text-white text-[10px] font-mono uppercase tracking-wider"
-          >
-            ENGINEER
-          </span>
-          <h3 class="text-base font-semibold text-engineer-900">
-            {{ t('gate1.hyperparamsTitle') }}
-          </h3>
+          <span class="inline-flex items-center h-5 px-2 rounded-full bg-engineer-700 text-white text-[10px] font-mono uppercase tracking-wider">ENGINEER</span>
+          <h3 class="text-base font-semibold text-engineer-900">{{ t('gate1.hyperparamsTitle') }}</h3>
         </div>
         <p class="text-[11px] font-mono text-engineer-700">
           {{ training.hyperparams?.hyperparameters.grounding_source ?? '—' }}
         </p>
       </div>
-      <dl class="grid grid-cols-2 md:grid-cols-4 gap-x-4 gap-y-3 text-sm font-mono">
+      <dl class="grid grid-cols-2 md:grid-cols-5 gap-x-4 gap-y-3 text-sm font-mono">
         <div>
           <dt class="text-engineer-700 text-xs uppercase">Epochs</dt>
-          <dd class="text-engineer-900 tabular-nums">
-            {{ training.hyperparams?.hyperparameters.epochs ?? '—' }}
-          </dd>
+          <dd class="text-engineer-900 tabular-nums">{{ training.hyperparams?.hyperparameters.epochs ?? '—' }}</dd>
         </div>
         <div>
-          <dt class="text-engineer-700 text-xs uppercase">Batch size</dt>
-          <dd class="text-engineer-900 tabular-nums">
-            {{ training.hyperparams?.hyperparameters.batch_size ?? '—' }}
-          </dd>
+          <dt class="text-engineer-700 text-xs uppercase">Batch</dt>
+          <dd class="text-engineer-900 tabular-nums">{{ training.hyperparams?.hyperparameters.batch_size ?? '—' }}</dd>
         </div>
         <div>
-          <dt class="text-engineer-700 text-xs uppercase">Learning rate</dt>
-          <dd class="text-engineer-900 tabular-nums">
-            {{ training.hyperparams?.hyperparameters.learning_rate ?? '—' }}
-          </dd>
+          <dt class="text-engineer-700 text-xs uppercase">LR</dt>
+          <dd class="text-engineer-900 tabular-nums">{{ training.hyperparams?.hyperparameters.learning_rate ?? '—' }}</dd>
         </div>
         <div>
-          <dt class="text-engineer-700 text-xs uppercase">Aug. intensity</dt>
-          <dd class="text-engineer-900">
-            {{ training.hyperparams?.hyperparameters.augmentation_intensity ?? '—' }}
-          </dd>
+          <dt class="text-engineer-700 text-xs uppercase">Aug.</dt>
+          <dd class="text-engineer-900">{{ training.hyperparams?.hyperparameters.augmentation_intensity ?? '—' }}</dd>
+        </div>
+        <div>
+          <dt class="text-engineer-700 text-xs uppercase">Patience</dt>
+          <dd class="text-engineer-900 tabular-nums">{{ training.hyperparams?.hyperparameters.early_stopping_patience ?? '—' }}</dd>
         </div>
       </dl>
     </section>
 
-    <footer class="flex items-center justify-between">
-      <AppButton variant="ghost" @click="backToLabeling">
-        ← {{ t('gate1.backToLabeling') }}
-      </AppButton>
-      <AppButton :disabled="training.starting || training.loading" @click="approveAndStart">
-        {{ training.starting ? t('common.loading') : t('gate1.approveAndStart') }} →
-      </AppButton>
-    </footer>
+    <!-- Training mode -->
+    <section class="rounded-xl bg-white border border-border-default shadow-card p-6">
+      <h3 class="text-base font-semibold text-ink-900">{{ t('gate1.modeTitle') }}</h3>
+      <p class="text-sm text-ink-500">{{ t('gate1.modeSub') }}</p>
+      <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <label
+          data-testid="gate1-mode-scratch"
+          class="flex items-start gap-3 rounded-xl border-2 p-4 cursor-pointer transition"
+          :class="training.trainMode === 'scratch' ? 'border-primary-400 bg-primary-50' : 'border-border-default hover:bg-ink-50'"
+        >
+          <input v-model="training.trainMode" type="radio" value="scratch" class="mt-1 accent-primary-600" />
+          <div class="flex-1">
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-sm font-medium text-ink-900">{{ t('gate1.modeScratch') }}</p>
+              <span class="inline-flex items-center h-5 px-2 rounded-full bg-primary-600 text-white text-[10px] font-mono uppercase tracking-wide">
+                {{ t('gate1.selected') }}
+              </span>
+            </div>
+            <p class="mt-1 text-xs text-ink-500">{{ t('gate1.modeScratchSub') }}</p>
+          </div>
+        </label>
+        <label
+          data-testid="gate1-mode-continue"
+          class="flex items-start gap-3 rounded-xl border-2 border-border-default p-4 cursor-not-allowed opacity-60"
+          :title="t('gate1.modeContinueTooltip')"
+        >
+          <input type="radio" value="continue" class="mt-1" disabled />
+          <div class="flex-1">
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-sm font-medium text-ink-500">{{ t('gate1.modeContinue') }}</p>
+              <span class="inline-flex items-center h-5 px-2 rounded-full bg-ink-200 text-ink-500 text-[10px] font-mono uppercase tracking-wide">
+                {{ t('gate1.disabled') }}
+              </span>
+            </div>
+            <p class="mt-1 text-xs text-ink-400">{{ t('gate1.modeContinueTooltip') }}</p>
+          </div>
+        </label>
+      </div>
+    </section>
+
+    <!-- Ready footer -->
+    <section class="flex items-center justify-between gap-4 rounded-xl bg-white border border-border-default shadow-card px-6 py-4">
+      <div class="min-w-0">
+        <p class="text-sm font-semibold text-ink-900">{{ t('gate1.readyTitle') }}</p>
+        <p class="text-xs text-ink-500">{{ t('gate1.readyBlurb') }}</p>
+      </div>
+      <div class="flex items-center gap-3 shrink-0">
+        <AppButton data-testid="gate1-back" variant="secondary" @click="backToLabeling">
+          ← {{ t('gate1.backToLabeling') }}
+        </AppButton>
+        <AppButton data-testid="gate1-approve" :disabled="training.starting || training.loading" @click="approveAndStart">
+          {{ training.starting ? t('common.loading') : t('gate1.approveAndStart') }} →
+        </AppButton>
+      </div>
+    </section>
   </div>
 </template>
