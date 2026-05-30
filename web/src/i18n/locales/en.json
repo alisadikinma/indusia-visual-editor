@@ -538,7 +538,16 @@
     "backToSetup": "Back to setup",
     "correctSamples": "Correct {n} samples →",
     "setupRetrain": "Setup retrain",
-    "promote": "Promote to production"
+    "promote": "Promote to production",
+    "failingDetail": "{d} F1 {f1} is below the {threshold} threshold. Correct the wrong samples → retrain (fine-tune) → re-eval.",
+    "runTitle": "Run {id} · evaluation",
+    "runSub": "Scored on a hold-out set of {n} predictions.",
+    "fp": "False positives",
+    "fn": "False negatives",
+    "filterLabel": "Prediction filter:",
+    "filterAll": "All",
+    "filterFp": "FP · false alarm",
+    "filterFn": "FN · missed"
   },
   "labeling": {
     "title": "Labeling canvas",

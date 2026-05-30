@@ -530,7 +530,16 @@
     "backToSetup": "Kembali ke setup",
     "correctSamples": "Koreksi {n} sampel →",
     "setupRetrain": "Setup retrain",
-    "promote": "Pasang ke produksi"
+    "promote": "Pasang ke produksi",
+    "failingDetail": "{d} F1 {f1} di bawah threshold {threshold}. Koreksi sampel yang salah → retrain (fine-tune) → eval ulang.",
+    "runTitle": "Run {id} · evaluasi",
+    "runSub": "Dinilai pada hold-out set {n} prediksi.",
+    "fp": "False positive",
+    "fn": "False negative",
+    "filterLabel": "Filter prediksi:",
+    "filterAll": "Semua",
+    "filterFp": "FP · salah alarm",
+    "filterFn": "FN · terlewat"
   },
   "labeling": {
     "title": "Kanvas pelabelan",
