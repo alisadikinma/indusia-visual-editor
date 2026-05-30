@@ -276,6 +276,140 @@ interface MockChatSession {
 }
 const chatDb: MockChatSession[] = []
 
+interface MockFeedback {
+  id: string
+  project_id: string
+  edge_id: string | null
+  train_run_id: string | null
+  designator: string | null
+  model_verdict: 'pass' | 'fail' | 'uncertain'
+  operator_mark: 'confirmed' | 'escape' | 'overkill' | null
+  defect_criterion: string | null
+  roi_path: string | null
+  roi_sha256: string | null
+  status: 'new' | 'curated' | 'promoted' | 'dismissed'
+  inspection_ts: string | null
+  created_at: string
+}
+
+interface MockDefectExample {
+  id: string
+  project_id: string
+  source_feedback_id: string
+  designator: string | null
+  defect_criterion: string | null
+  roi_path: string | null
+  roi_sha256: string | null
+  created_at: string
+}
+
+const FB_PROJECT = '11111111-1111-1111-1111-111111111111'
+const feedbackDb: MockFeedback[] = [
+  {
+    id: 'fb-1',
+    project_id: FB_PROJECT,
+    edge_id: 'edge-01',
+    train_run_id: 'tr-101',
+    designator: 'U7',
+    model_verdict: 'pass',
+    operator_mark: null,
+    defect_criterion: null,
+    roi_path: null,
+    roi_sha256: null,
+    status: 'new',
+    inspection_ts: new Date(now - 8 * 60_000).toISOString(),
+    created_at: new Date(now - 8 * 60_000).toISOString(),
+  },
+  {
+    id: 'fb-2',
+    project_id: FB_PROJECT,
+    edge_id: 'edge-02',
+    train_run_id: 'tr-101',
+    designator: 'C4',
+    model_verdict: 'pass',
+    operator_mark: null,
+    defect_criterion: null,
+    roi_path: null,
+    roi_sha256: null,
+    status: 'new',
+    inspection_ts: new Date(now - 22 * 60_000).toISOString(),
+    created_at: new Date(now - 22 * 60_000).toISOString(),
+  },
+  {
+    id: 'fb-3',
+    project_id: FB_PROJECT,
+    edge_id: 'edge-01',
+    train_run_id: 'tr-101',
+    designator: 'J5',
+    model_verdict: 'pass',
+    operator_mark: 'escape',
+    defect_criterion: 'missing_pin_connector',
+    roi_path: `${FB_PROJECT}/feedback/3a1b.jpg`,
+    roi_sha256: '3a1b'.repeat(16),
+    status: 'curated',
+    inspection_ts: new Date(now - 95 * 60_000).toISOString(),
+    created_at: new Date(now - 95 * 60_000).toISOString(),
+  },
+  {
+    id: 'fb-4',
+    project_id: FB_PROJECT,
+    edge_id: 'edge-03',
+    train_run_id: 'tr-100',
+    designator: 'R12',
+    model_verdict: 'fail',
+    operator_mark: 'overkill',
+    defect_criterion: null,
+    roi_path: `${FB_PROJECT}/feedback/7c2d.jpg`,
+    roi_sha256: '7c2d'.repeat(16),
+    status: 'curated',
+    inspection_ts: new Date(now - 3 * 60 * 60_000).toISOString(),
+    created_at: new Date(now - 3 * 60 * 60_000).toISOString(),
+  },
+  {
+    id: 'fb-5',
+    project_id: FB_PROJECT,
+    edge_id: 'edge-01',
+    train_run_id: 'tr-100',
+    designator: 'D2',
+    model_verdict: 'pass',
+    operator_mark: 'escape',
+    defect_criterion: 'polarity_flip',
+    roi_path: `${FB_PROJECT}/feedback/9e4f.jpg`,
+    roi_sha256: '9e4f'.repeat(16),
+    status: 'promoted',
+    inspection_ts: new Date(now - 26 * 60 * 60_000).toISOString(),
+    created_at: new Date(now - 26 * 60 * 60_000).toISOString(),
+  },
+  {
+    id: 'fb-6',
+    project_id: FB_PROJECT,
+    edge_id: 'edge-02',
+    train_run_id: 'tr-100',
+    designator: 'U1',
+    model_verdict: 'fail',
+    operator_mark: 'confirmed',
+    defect_criterion: 'orientation',
+    roi_path: `${FB_PROJECT}/feedback/b8a0.jpg`,
+    roi_sha256: 'b8a0'.repeat(16),
+    status: 'dismissed',
+    inspection_ts: new Date(now - 50 * 60 * 60_000).toISOString(),
+    created_at: new Date(now - 50 * 60 * 60_000).toISOString(),
+  },
+]
+
+const defectExamplesDb: MockDefectExample[] = [
+  {
+    id: 'de-1',
+    project_id: FB_PROJECT,
+    source_feedback_id: 'fb-5',
+    designator: 'D2',
+    defect_criterion: 'polarity_flip',
+    roi_path: `${FB_PROJECT}/feedback/9e4f.jpg`,
+    roi_sha256: '9e4f'.repeat(16),
+    created_at: new Date(now - 25 * 60 * 60_000).toISOString(),
+  },
+]
+
 function sampleStats() {
   const designators = ['R1', 'R2', 'C1', 'C4', 'U1', 'U7', 'J1', 'J5', 'D1', 'D2']
   const per = designators.map((d, i) => {
@@ -728,6 +862,78 @@ ${labelTags}
   http.get('/api/models', () => HttpResponse.json(envelope(modelsDb))),
   http.get('/api/datasets', () => HttpResponse.json(envelope(datasetsDb))),
   http.get('/api/team', () => HttpResponse.json(envelope(teamDb))),
+
+  // ───── inspection feedback (v1 manual feedback loop) ─────
+  http.get('/api/inspection-feedback', ({ request }) => {
+    const status = new URL(request.url).searchParams.get('status')
+    const rows = status ? feedbackDb.filter((f) => f.status === status) : feedbackDb
+    const sorted = [...rows].sort((a, b) => b.created_at.localeCompare(a.created_at))
+    return HttpResponse.json(envelope(sorted))
+  }),
+  http.post('/api/projects/:id/inspection-feedback', async ({ request, params }) => {
+    const projectId = String(params.id)
+    const form = await request.formData()
+    const str = (k: string) => {
+      const v = form.get(k)
+      return typeof v === 'string' && v.length > 0 ? v : null
+    }
+    const roi = form.get('file')
+    const row: MockFeedback = {
+      id: crypto.randomUUID(),
+      project_id: projectId,
+      edge_id: str('edge_id'),
+      train_run_id: str('train_run_id'),
+      designator: str('designator'),
+      model_verdict: (str('model_verdict') ?? 'uncertain') as MockFeedback['model_verdict'],
+      operator_mark: str('operator_mark') as MockFeedback['operator_mark'],
+      defect_criterion: str('defect_criterion'),
+      roi_path: roi instanceof File ? `${projectId}/feedback/${roi.name}` : null,
+      roi_sha256: roi instanceof File ? 'f'.repeat(64) : null,
+      status: 'new',
+      inspection_ts: str('inspection_ts') ?? new Date().toISOString(),
+      created_at: new Date().toISOString(),
+    }
+    feedbackDb.unshift(row)
+    return HttpResponse.json(envelope(row, 'feedback recorded'), { status: 201 })
+  }),
+  http.put('/api/inspection-feedback/:fid', async ({ request, params }) => {
+    const idx = feedbackDb.findIndex((f) => f.id === String(params.fid))
+    if (idx === -1) return failed('feedback not found', 404)
+    const body = (await request.json()) as {
+      operator_mark?: MockFeedback['operator_mark']
+      status?: MockFeedback['status']
+    }
+    feedbackDb[idx] = {
+      ...feedbackDb[idx],
+      operator_mark: body.operator_mark ?? feedbackDb[idx].operator_mark,
+      status: body.status ?? feedbackDb[idx].status,
+    }
+    return HttpResponse.json(envelope(feedbackDb[idx]))
+  }),
+  http.post('/api/inspection-feedback/:fid/promote', ({ params }) => {
+    const idx = feedbackDb.findIndex((f) => f.id === String(params.fid))
+    if (idx === -1) return failed('feedback not found', 404)
+    const row = feedbackDb[idx]
+    if (row.status === 'promoted') {
+      return failed('feedback already promoted to a defect example', 409)
+    }
+    if (row.operator_mark !== 'escape') {
+      return failed('only confirmed escapes can be promoted', 409)
+    }
+    feedbackDb[idx] = { ...row, status: 'promoted' }
+    const example: MockDefectExample = {
+      id: crypto.randomUUID(),
+      project_id: row.project_id,
+      source_feedback_id: row.id,
+      designator: row.designator,
+      defect_criterion: row.defect_criterion,
+      roi_path: row.roi_path,
+      roi_sha256: row.roi_sha256,
+      created_at: new Date().toISOString(),
+    }
+    defectExamplesDb.push(example)
+    return HttpResponse.json(envelope(example, 'promoted to defect example'), { status: 201 })
+  }),
 
   // ───── chat (M12) ─────
   http.get('/api/projects/:id/chat', ({ params }) => {
