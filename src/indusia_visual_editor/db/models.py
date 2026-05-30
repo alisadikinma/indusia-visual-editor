@@ -15,6 +15,7 @@ from datetime import datetime
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Enum,
     ForeignKey,
@@ -215,6 +216,16 @@ class Project(Base):
         passive_deletes=True,
     )
     chat_sessions: Mapped[list["ChatSession"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    inspection_feedback: Mapped[list["InspectionFeedback"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    defect_examples: Mapped[list["DefectExample"]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -651,3 +662,122 @@ class ChatSession(Base):
     )
 
     project: Mapped[Project] = relationship(back_populates="chat_sessions")
+
+
+class InspectionFeedback(Base):
+    """v1 inspection-feedback loop — operator verdict on a runtime detection.
+
+    When a deployed model makes a call on a board at the edge, the operator
+    can disagree: a missed defect (`escape`), a false alarm (`overkill`), or
+    agreement (`confirmed`). Each disagreement is captured here with the
+    model's own verdict, the optional ROI crop the operator was looking at,
+    and the defect criterion they assigned.
+
+    Only a `confirmed`/`escape` row with a valid `defect_criterion` and a
+    stored ROI is promotable to a `DefectExample` (the curated training
+    sample). `overkill` is a hard-negative signal, NOT a defect example —
+    the promote endpoint rejects it (see routes/inspection_feedback.py).
+
+    `edge_id` / `train_run_id` use ON DELETE SET NULL so audit rows survive
+    edge de-registration or train-run cleanup; only project deletion cascades
+    the feedback away.
+    """
+
+    __tablename__ = "inspection_feedback"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    edge_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("edges.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    train_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("train_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    designator: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    model_verdict: Mapped[str] = mapped_column(String(16), nullable=False)
+    operator_mark: Mapped[str] = mapped_column(String(16), nullable=False)
+    defect_criterion: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    roi_path: Mapped[str | None] = mapped_column(Text, nullable=True)
+    roi_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default="new",
+        server_default="new",
+    )
+    inspection_ts: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    project: Mapped[Project] = relationship(back_populates="inspection_feedback")
+
+    __table_args__ = (
+        CheckConstraint(
+            "model_verdict IN ('pass','fail','uncertain')",
+            name="ck_inspection_feedback_verdict",
+        ),
+        CheckConstraint(
+            "operator_mark IN ('confirmed','escape','overkill')",
+            name="ck_inspection_feedback_mark",
+        ),
+        CheckConstraint(
+            "status IN ('new','curated','promoted','dismissed')",
+            name="ck_inspection_feedback_status",
+        ),
+    )
+
+
+class DefectExample(Base):
+    """A curated, promotable training sample distilled from feedback.
+
+    Created only when an `InspectionFeedback` row passes the inspection-logic
+    gate (real missed defect with a valid criterion + ROI). The ROI crop is
+    copied by reference (`roi_path` + `roi_sha256`) so the next training run
+    can fold it into the dataset. `source_feedback_id` uses ON DELETE SET
+    NULL so a dismissed/cleaned feedback row never orphans the curated
+    example it produced.
+    """
+
+    __tablename__ = "defect_examples"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_feedback_id: Mapped[uuid.UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("inspection_feedback.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    designator: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    defect_criterion: Mapped[str] = mapped_column(String(40), nullable=False)
+    roi_path: Mapped[str] = mapped_column(Text, nullable=False)
+    roi_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    project: Mapped[Project] = relationship(back_populates="defect_examples")
