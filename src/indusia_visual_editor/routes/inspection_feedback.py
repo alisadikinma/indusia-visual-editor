@@ -35,12 +35,13 @@ from fastapi import (
     status,
 )
 from pydantic import ValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from indusia_visual_editor.db.models import DefectExample, InspectionFeedback
 from indusia_visual_editor.db.session import get_session
 from indusia_visual_editor.schemas.inspection_feedback import (
+    DefectClassCount,
     DefectExampleRead,
     FeedbackCurate,
     FeedbackIngest,
@@ -59,6 +60,11 @@ logger = get_logger(__name__)
 _MAPPING_PATH = (
     Path(__file__).resolve().parent.parent / "data" / "defect_detector_mapping.yaml"
 )
+
+# Supervised per-class data floor — the rough number of real examples a defect
+# class needs before a supervised per-class detector is worth training
+# (ai-visual-inspection-expert §10). Per-PCB; informational on the rollup.
+SUPERVISED_PER_CLASS_FLOOR = 100
 
 
 @lru_cache(maxsize=1)
@@ -79,6 +85,7 @@ project_router = APIRouter(
     tags=["inspection-feedback"],
 )
 router = APIRouter(prefix="/api/inspection-feedback", tags=["inspection-feedback"])
+examples_router = APIRouter(prefix="/api/defect-examples", tags=["inspection-feedback"])
 
 
 def _serialize(row: InspectionFeedback) -> dict[str, Any]:
@@ -276,4 +283,39 @@ async def promote_feedback(
         data=_serialize_example(example),
         message="defect example created",
         status_code=status.HTTP_201_CREATED,
+    )
+
+
+@examples_router.get("/summary")
+async def defect_library_summary(
+    project_id: uuid.UUID | None = Query(None),
+    session: AsyncSession = Depends(get_session),
+):
+    """Per-class inventory of the promoted defect library (surface S8).
+
+    Returns one row per canonical criterion (zero-filled), so the Datasets card
+    shows every class. `?project_id=` scopes to one PCB (where the per-class
+    floor is meaningful, since models train per-PCB); without it the counts are
+    a cross-project library rollup. Public, same as the other reads. The
+    examples are NOT yet consumed by training — this is an accumulation queue,
+    not an active training signal."""
+    stmt = select(
+        DefectExample.defect_criterion, func.count()
+    ).group_by(DefectExample.defect_criterion)
+    if project_id is not None:
+        stmt = stmt.where(DefectExample.project_id == project_id)
+    counts = {
+        criterion: total for criterion, total in (await session.execute(stmt)).all()
+    }
+    rows = [
+        DefectClassCount(
+            defect_criterion=criterion,
+            count=counts.get(criterion, 0),
+            meets_floor=counts.get(criterion, 0) >= SUPERVISED_PER_CLASS_FLOOR,
+        ).model_dump(mode="json")
+        for criterion in sorted(_valid_criteria())
+    ]
+    return success(
+        data={"floor": SUPERVISED_PER_CLASS_FLOOR, "classes": rows},
+        message="defect library inventory",
     )

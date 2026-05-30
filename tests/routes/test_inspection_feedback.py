@@ -334,6 +334,46 @@ async def test_promote_twice_rejected(
 
 
 @pytest.mark.asyncio
+async def test_defect_library_summary_counts_per_class(
+    client: AsyncClient, query_session: AsyncSession
+):
+    """The S8 inventory zero-fills all 9 criteria and counts promoted rows
+    per defect_criterion, scoped by project when asked."""
+    pid = await _make_project(query_session)
+
+    async def _promote(criterion: str) -> None:
+        r = await client.post(
+            f"/api/projects/{pid}/inspection-feedback",
+            data={
+                "model_verdict": "pass",
+                "operator_mark": "escape",
+                "defect_criterion": criterion,
+            },
+            files={"file": ("roi.jpg", b"\xff\xd8" + criterion.encode(), "image/jpeg")},
+        )
+        fid = r.json()["data"]["id"]
+        pr = await client.post(f"/api/inspection-feedback/{fid}/promote")
+        assert pr.status_code == 201, pr.text
+
+    await _promote("missing_component")
+    await _promote("missing_component")
+    await _promote("polarity_flip")
+
+    r = await client.get("/api/defect-examples/summary", params={"project_id": str(pid)})
+    assert r.status_code == 200, r.text
+    payload = r.json()["data"]
+    assert payload["floor"] == 100
+    by_crit = {c["defect_criterion"]: c for c in payload["classes"]}
+    # all 9 canonical criteria present (zero-filled)
+    assert len(by_crit) == 9
+    assert by_crit["missing_component"]["count"] == 2
+    assert by_crit["polarity_flip"]["count"] == 1
+    assert by_crit["solder_short"]["count"] == 0
+    # nothing reaches the 100/class floor from 2 examples
+    assert by_crit["missing_component"]["meets_floor"] is False
+
+
+@pytest.mark.asyncio
 async def test_list_all_feedback_cross_project(
     client: AsyncClient, query_session: AsyncSession
 ):

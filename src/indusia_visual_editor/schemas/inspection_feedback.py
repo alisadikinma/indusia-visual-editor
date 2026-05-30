@@ -80,3 +80,18 @@ class DefectExampleRead(BaseModel):
     roi_path: str
     roi_sha256: str
     created_at: datetime
+
+
+class DefectClassCount(BaseModel):
+    """One row of the defect-library inventory (surface S8).
+
+    `count` is the number of promoted `DefectExample` rows for this criterion.
+    `meets_floor` is true once count reaches the supervised per-class floor
+    (~100 real examples — see ai-visual-inspection-expert §10). It is only
+    meaningful when the summary is scoped to a single project, because models
+    train per-PCB; on the cross-project rollup it is reported but not a
+    promote/train verdict."""
+
+    defect_criterion: str
+    count: int
+    meets_floor: bool
