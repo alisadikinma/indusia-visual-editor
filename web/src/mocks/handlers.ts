@@ -529,8 +529,9 @@ ${labelTags}
         task: {
           id: 1,
           data: {
-            image:
-              'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1920&q=80',
+            // Local fixture — the primary deployment target is an air-gapped
+            // factory, so the dev/demo canvas must never depend on a remote CDN.
+            image: '/mock/golden-sample.svg',
           },
           predictions: [
             {

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-label="Sample PCB golden board (mock)">
+  <rect width="1920" height="1080" fill="#0f3d2e"/>
+  <g stroke="#1c6b4f" stroke-width="2" opacity="0.5">
+    <path d="M0 120 H1920 M0 360 H1920 M0 600 H1920 M0 840 H1920"/>
+    <path d="M240 0 V1080 M560 0 V1080 M880 0 V1080 M1200 0 V1080 M1520 0 V1080"/>
+  </g>
+  <g fill="#d8b24a">
+    <circle cx="120" cy="120" r="18"/>
+    <circle cx="1800" cy="120" r="18"/>
+    <circle cx="120" cy="960" r="18"/>
+  </g>
+  <g fill="#10211b" stroke="#3b8f6c" stroke-width="3">
+    <rect x="300" y="200" width="160" height="90" rx="6"/>
+    <rect x="620" y="240" width="120" height="120" rx="6"/>
+    <rect x="900" y="180" width="220" height="70" rx="6"/>
+    <rect x="1280" y="260" width="100" height="200" rx="6"/>
+    <rect x="420" y="560" width="180" height="100" rx="6"/>
+    <rect x="780" y="620" width="140" height="140" rx="6"/>
+    <rect x="1100" y="580" width="260" height="80" rx="6"/>
+  </g>
+  <text x="960" y="1030" fill="#7fd3ab" font-family="monospace" font-size="34" text-anchor="middle">SAMPLE GOLDEN BOARD — MOCK FIXTURE (dev only)</text>
+</svg>

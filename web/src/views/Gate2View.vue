@@ -9,6 +9,7 @@ import { useEngineerStore } from '@/stores/engineer'
 import { useToastStore } from '@/stores/toast'
 import { useEvalStore } from '@/stores/eval'
 import { EVAL_THRESHOLDS } from '@/api/eval'
+import { getProject } from '@/api/projects'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -23,6 +24,10 @@ const projectId = computed(() => String(route.params.id ?? ''))
 const runId = computed(() => String(route.params.runId ?? ''))
 const shortRun = computed(() => runId.value.slice(0, 8))
 
+// PCB slug for the `ais model push --pcb` command — the CLI expects a human
+// PCB name, not a UUID. Falls back to the short id only until the project loads.
+const pcbName = ref('')
+
 const confirmed = ref(false)
 const showModal = ref(false)
 
@@ -30,6 +35,11 @@ onMounted(async () => {
   if (!projectId.value) return
   await edges.fetchAll()
   if (!evalStore.data && runId.value) await evalStore.load(runId.value)
+  try {
+    pcbName.value = (await getProject(projectId.value)).slug
+  } catch {
+    pcbName.value = ''
+  }
 })
 
 function isOnline(lastSeen: string | null): boolean {
@@ -176,7 +186,7 @@ function backToEval() {
       </dl>
       <div class="bg-engineer-900 rounded-lg p-3 font-mono text-[11px] text-engineer-200">
         <p class="text-engineer-200/60">$ {{ t('gate2.pushCommand') }}</p>
-        <p>ais model push --pcb {{ projectId.slice(0, 8) }} --tag &lt;tag&gt;</p>
+        <p>ais model push --pcb {{ pcbName || projectId.slice(0, 8) }} --tag &lt;tag&gt;</p>
       </div>
     </section>
 

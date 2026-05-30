@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import AppButton from '@/components/primitives/AppButton.vue'
 import { useEvalStore } from '@/stores/eval'
 import { useTrainingStore } from '@/stores/training'
+import { useToastStore } from '@/stores/toast'
 import { EVAL_THRESHOLDS } from '@/api/eval'
 
 const { t } = useI18n()
@@ -12,6 +13,7 @@ const route = useRoute()
 const router = useRouter()
 const evalStore = useEvalStore()
 const training = useTrainingStore()
+const toast = useToastStore()
 
 const projectId = computed(() => String(route.params.id ?? ''))
 const runId = computed(() => String(route.params.runId ?? ''))
@@ -56,8 +58,20 @@ const testSetOptions = ['holdout', 'production_run', 'upload'] as const
 
 async function startEval() {
   starting.value = true
-  await evalStore.load(runId.value)
-  await router.push({ name: 'eval', params: { id: projectId.value, runId: runId.value } })
+  try {
+    await evalStore.load(runId.value)
+    // load() swallows transport errors into evalStore.error — don't navigate
+    // to the eval screen if scoring never started.
+    if (evalStore.error) {
+      toast.error(t('setupEval.startError'), evalStore.error)
+      return
+    }
+    await router.push({ name: 'eval', params: { id: projectId.value, runId: runId.value } })
+  } catch (err) {
+    toast.error(t('setupEval.startError'), err instanceof Error ? err.message : undefined)
+  } finally {
+    starting.value = false
+  }
 }
 function backToTraining() {
   router.push({ name: 'training', params: { id: projectId.value, runId: runId.value } })
