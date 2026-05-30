@@ -112,6 +112,36 @@ async def test_get_asset_qc_422_for_non_golden(
 
 
 @pytest.mark.asyncio
+async def test_registration_preflight_on_golden(
+    client: AsyncClient, isolated_storage_root: Path
+):
+    project_id = await _create_project(client, "reg")
+    await client.post(
+        f"/api/projects/{project_id}/assets",
+        params={"kind": "golden_top"},
+        files={"file": ("g.png", io.BytesIO(_real_sharp_png()), "image/png")},
+    )
+    r = await client.get(
+        f"/api/projects/{project_id}/registration-preflight", params={"side": "top"}
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert data["sample_count"] == 1
+    assert "verdict" in data and "per_image" in data
+
+
+@pytest.mark.asyncio
+async def test_registration_preflight_422_without_golden(
+    client: AsyncClient, isolated_storage_root: Path
+):
+    project_id = await _create_project(client, "regnone")
+    r = await client.get(
+        f"/api/projects/{project_id}/registration-preflight", params={"side": "bottom"}
+    )
+    assert r.status_code == 422, r.text
+
+
+@pytest.mark.asyncio
 async def test_upload_golden_top_image(client: AsyncClient, isolated_storage_root: Path):
     project_id = await _create_project(client, "upload")
 

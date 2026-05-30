@@ -28,14 +28,27 @@ from indusia_visual_editor.services.asset.image_store import (
     list_assets,
     save_asset,
 )
+from indusia_visual_editor.services.asset.registration import (
+    RegistrationError,
+    assess_registration,
+)
 from indusia_visual_editor.services.auth.dependencies import get_current_user
 from indusia_visual_editor.services.project.crud import get_project
 from indusia_visual_editor.utils.responses import success
 
 
 router = APIRouter(prefix="/api/projects/{project_id}/assets", tags=["assets"])
+preflight_router = APIRouter(prefix="/api/projects/{project_id}", tags=["assets"])
 
 _GOLDEN_KINDS = {AssetKind.GOLDEN_TOP, AssetKind.GOLDEN_BOTTOM}
+
+
+def _golden_kind(side: str) -> AssetKind:
+    if side == "top":
+        return AssetKind.GOLDEN_TOP
+    if side == "bottom":
+        return AssetKind.GOLDEN_BOTTOM
+    raise HTTPException(status_code=422, detail="side must be 'top' or 'bottom'")
 
 
 def _serialize(asset) -> dict:
@@ -118,6 +131,31 @@ async def get_asset_qc(
         )
     file_bytes = absolute_path(asset).read_bytes()
     return success(data=_qc_or_none(file_bytes), message="golden QC")
+
+
+@preflight_router.get("/registration-preflight")
+async def registration_preflight(
+    project_id: uuid.UUID,
+    side: str = Query(...),
+    session: AsyncSession = Depends(get_session),
+):
+    """Pre-flight the golden sample(s) for a side (T7 / G2).
+
+    Relative pixel-domain check (feature-detectability + pairwise residual),
+    NOT absolute µm registration. 422 if the side has no golden yet."""
+    await get_project(session, project_id)
+    kind = _golden_kind(side)
+    goldens = [a for a in await list_assets(session, project_id) if a.kind == kind]
+    if not goldens:
+        raise HTTPException(
+            status_code=422, detail=f"no {kind.value} asset uploaded yet"
+        )
+    images = [absolute_path(a).read_bytes() for a in goldens]
+    try:
+        result = assess_registration(images)
+    except RegistrationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return success(data=result, message="registration pre-flight")
 
 
 @router.get("/{asset_id}/binary")

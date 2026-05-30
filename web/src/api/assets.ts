@@ -65,3 +65,22 @@ export async function getAssetQc(projectId: string, assetId: string): Promise<Go
   )
   return data.data
 }
+
+export interface RegistrationPreflight {
+  verdict: QcVerdict
+  reasons: string[]
+  per_image: { keypoints: number; ok: boolean }[]
+  pairwise_residual_px: number | null
+  sample_count: number
+}
+
+export async function getRegistrationPreflight(
+  projectId: string,
+  side: 'top' | 'bottom',
+): Promise<RegistrationPreflight> {
+  const { data } = await apiClient.get<Envelope<RegistrationPreflight>>(
+    `/projects/${projectId}/registration-preflight`,
+    { params: { side } },
+  )
+  return data.data
+}

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import AppButton from '@/components/primitives/AppButton.vue'
 import { useTrainingStore } from '@/stores/training'
 import { useEngineerStore } from '@/stores/engineer'
+import { getRegistrationPreflight, type RegistrationPreflight, type QcVerdict } from '@/api/assets'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -13,11 +14,23 @@ const training = useTrainingStore()
 const engineer = useEngineerStore()
 
 const projectId = computed(() => String(route.params.id ?? ''))
+const registration = ref<RegistrationPreflight | null>(null)
 
 onMounted(async () => {
   if (!projectId.value) return
   await training.loadGate1(projectId.value, 'top')
+  try {
+    registration.value = await getRegistrationPreflight(projectId.value, 'top')
+  } catch {
+    registration.value = null // no golden uploaded for this side yet
+  }
 })
+
+const regTone: Record<QcVerdict, string> = {
+  ok: 'bg-primary-50 border-primary-200 text-primary-900',
+  warn: 'bg-amber-50 border-amber-200 text-amber-900',
+  fail: 'bg-red-50 border-red-200 text-red-900',
+}
 
 const stats = computed(() => training.datasetStats)
 const perDesignator = computed(() => stats.value?.per_designator ?? [])
@@ -105,6 +118,38 @@ function backToLabeling() {
 
     <div v-if="training.error" class="rounded-md bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
       {{ training.error }}
+    </div>
+
+    <!-- Registration pre-flight (T7 / G2) — relative, pixel-domain check -->
+    <div
+      v-if="registration"
+      data-testid="gate1-registration"
+      class="rounded-xl border px-5 py-4"
+      :class="regTone[registration.verdict]"
+    >
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p class="text-sm font-semibold">
+            {{ t('gate1.registration.title') }} · {{ t(`gate1.registration.${registration.verdict}`) }}
+          </p>
+          <p class="text-sm opacity-80">
+            {{ t('gate1.registration.blurb', {
+              kp: registration.per_image[0]?.keypoints ?? 0,
+              n: registration.sample_count,
+            }) }}
+            <template v-if="registration.pairwise_residual_px !== null">
+              · {{ t('gate1.registration.residual', { px: registration.pairwise_residual_px }) }}
+            </template>
+          </p>
+          <p
+            v-if="registration.reasons.length"
+            class="mt-1 text-xs opacity-70"
+          >
+            {{ registration.reasons.map((r) => t(`gate1.registration.reason.${r}`)).join(' · ') }}
+          </p>
+        </div>
+        <span class="text-[11px] font-mono opacity-60 shrink-0">{{ t('gate1.registration.relativeNote') }}</span>
+      </div>
     </div>
 
     <!-- Readiness + considerations -->

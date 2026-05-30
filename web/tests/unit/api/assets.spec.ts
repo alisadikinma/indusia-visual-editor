@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { server } from '@/mocks/server'
-import { getAssetQc } from '@/api/assets'
+import { getAssetQc, getRegistrationPreflight } from '@/api/assets'
 
 const env = <T>(data: T) => ({ status: true, message: 'ok', data })
 
@@ -25,5 +25,25 @@ describe('assets api — golden QC (T6)', () => {
     expect(qc.verdict).toBe('warn')
     expect(qc.reasons).toContain('blur_warn')
     expect(qc.sharpness).toBeCloseTo(95.2)
+  })
+
+  it('getRegistrationPreflight returns the parsed verdict + metrics', async () => {
+    server.use(
+      http.get('/api/projects/:id/registration-preflight', () =>
+        HttpResponse.json(
+          env({
+            verdict: 'ok',
+            reasons: [],
+            per_image: [{ keypoints: 412, ok: true }],
+            pairwise_residual_px: null,
+            sample_count: 1,
+          }),
+        ),
+      ),
+    )
+    const reg = await getRegistrationPreflight('proj-1', 'top')
+    expect(reg.verdict).toBe('ok')
+    expect(reg.per_image[0].keypoints).toBe(412)
+    expect(reg.sample_count).toBe(1)
   })
 })

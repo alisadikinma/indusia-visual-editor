@@ -477,6 +477,22 @@
     "subhead": "Review dataset readiness, training mode, and considerations before approving the run.",
     "hitlTitle": "Human approval before training starts",
     "hitlBlurb": "Review dataset readiness, then approve to start. You can cancel any time.",
+    "registration": {
+      "title": "Golden registration pre-flight",
+      "ok": "ready",
+      "warn": "needs review",
+      "fail": "at risk",
+      "blurb": "{kp} ORB features detected · {n} golden sample(s)",
+      "residual": "inter-sample residual {px} px",
+      "relativeNote": "relative (pixels), not µm calibration",
+      "reason": {
+        "insufficient_features": "too few features for runtime registration",
+        "sparse_features": "sparse features — registration fragile",
+        "unmatched_samples": "samples could not be matched",
+        "misaligned_warn": "inter-sample framing slightly shifted",
+        "misaligned_fail": "inter-sample framing badly shifted"
+      }
+    },
     "datasetTitle": "Dataset readiness",
     "regions": "regions",
     "bucketSufficient": "Sufficient",

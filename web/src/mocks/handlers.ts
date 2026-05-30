@@ -629,6 +629,21 @@ export const handlers = [
   http.get('/api/projects/:id/assets', ({ params }) => {
     return HttpResponse.json(envelope(assetsDb.get(String(params.id)) ?? []))
   }),
+  http.get('/api/projects/:id/registration-preflight', ({ request, params }) => {
+    const side = new URL(request.url).searchParams.get('side') ?? 'top'
+    const kind = side === 'bottom' ? 'golden_bottom' : 'golden_top'
+    const rows = (assetsDb.get(String(params.id)) ?? []).filter((a) => a.kind === kind)
+    if (rows.length === 0) return failed(`no ${kind} asset uploaded yet`, 422)
+    return HttpResponse.json(
+      envelope({
+        verdict: 'ok',
+        reasons: [],
+        per_image: rows.map(() => ({ keypoints: 412, ok: true })),
+        pairwise_residual_px: rows.length >= 2 ? 6.3 : null,
+        sample_count: rows.length,
+      }, 'registration pre-flight'),
+    )
+  }),
   http.get('/api/projects/:id/assets/:assetId/qc', ({ params }) => {
     const rows = assetsDb.get(String(params.id)) ?? []
     const asset = rows.find((a) => a.id === String(params.assetId))

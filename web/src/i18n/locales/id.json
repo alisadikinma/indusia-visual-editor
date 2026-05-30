@@ -469,6 +469,22 @@
     "subhead": "Periksa kesiapan dataset, mode pelatihan, dan pertimbangan sebelum menyetujui run.",
     "hitlTitle": "Persetujuan manusia sebelum pelatihan",
     "hitlBlurb": "Tinjau kesiapan dataset, lalu setujui untuk memulai. Bisa dibatalkan kapan saja.",
+    "registration": {
+      "title": "Pra-cek registrasi golden",
+      "ok": "siap",
+      "warn": "perlu dicek",
+      "fail": "berisiko",
+      "blurb": "{kp} fitur ORB terdeteksi · {n} sampel golden",
+      "residual": "residual antar-sampel {px} px",
+      "relativeNote": "relatif (piksel), bukan kalibrasi µm",
+      "reason": {
+        "insufficient_features": "fitur terlalu sedikit untuk registrasi runtime",
+        "sparse_features": "fitur jarang — registrasi rawan",
+        "unmatched_samples": "sampel tidak bisa dicocokkan",
+        "misaligned_warn": "framing antar-sampel agak bergeser",
+        "misaligned_fail": "framing antar-sampel jauh bergeser"
+      }
+    },
     "datasetTitle": "Kesiapan dataset",
     "regions": "region",
     "bucketSufficient": "Cukup",

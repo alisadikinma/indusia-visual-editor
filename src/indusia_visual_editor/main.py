@@ -16,7 +16,10 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from indusia_visual_editor import __version__
 from indusia_visual_editor.config import get_config
 from indusia_visual_editor.routes.adapt import router as adapt_router
-from indusia_visual_editor.routes.assets import router as assets_router
+from indusia_visual_editor.routes.assets import (
+    preflight_router as registration_preflight_router,
+    router as assets_router,
+)
 from indusia_visual_editor.routes.auth import router as auth_router
 from indusia_visual_editor.routes.bom import router as bom_router
 from indusia_visual_editor.routes.chat import router as chat_router
@@ -166,6 +169,7 @@ async def _http_exception(request: Request, exc: HTTPException):
 app.include_router(auth_router)
 app.include_router(projects_router)
 app.include_router(assets_router)
+app.include_router(registration_preflight_router)
 app.include_router(bom_router)
 app.include_router(llm_router)
 app.include_router(adapt_router)
