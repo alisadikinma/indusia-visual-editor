@@ -150,6 +150,14 @@ async function continueNext() {
           {{ t(`labeling.side.${labels.side}`) }} · {{ labels.designatorCount }} {{ t('labeling.designators') }} ·
           {{ labels.predictionCount }} {{ t('labeling.predictions') }}
         </span>
+        <span
+          v-if="labels.lowConfidenceCount > 0"
+          data-testid="labeling-lowconf"
+          class="inline-flex items-center gap-1 h-5 px-2 rounded-full text-[11px] font-medium bg-amber-50 text-amber-800 shrink-0"
+          :title="t('labeling.lowConfidenceHint', { list: labels.lowConfidenceDesignators.join(', ') })"
+        >
+          {{ t('labeling.lowConfidence', { n: labels.lowConfidenceCount }) }}
+        </span>
       </div>
 
       <div class="flex items-center gap-2 shrink-0">

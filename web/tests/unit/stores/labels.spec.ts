@@ -58,6 +58,29 @@ describe('labels store', () => {
     expect(store.lastSavedAt).toBe('2026-05-27T10:00:00Z')
   })
 
+  it('flags predictions below the low-confidence threshold', async () => {
+    const store = useLabelsStore()
+    await store.loadTask('proj-1', 'top')
+    store.task = {
+      ...sampleTask,
+      task: {
+        ...sampleTask.task,
+        predictions: [
+          {
+            model_version: 'mock',
+            result: [
+              { id: 'a', type: 'rectanglelabels', score: 0.92, value: { rectanglelabels: ['R1'] } },
+              { id: 'b', type: 'rectanglelabels', score: 0.31, value: { rectanglelabels: ['C4'] } },
+              { id: 'c', type: 'rectanglelabels', score: 0.1, value: { rectanglelabels: ['U7'] } },
+            ],
+          },
+        ],
+      },
+    }
+    expect(store.lowConfidenceCount).toBe(2)
+    expect(store.lowConfidenceDesignators).toEqual(['C4', 'U7'])
+  })
+
   it('correctionMode toggles with sample ids', () => {
     const store = useLabelsStore()
     store.setCorrectionMode(true, ['s1', 's2', 's3'])

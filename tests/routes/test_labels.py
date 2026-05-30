@@ -211,6 +211,9 @@ async def test_get_task_returns_lsf_task_json_with_predictions(client: AsyncClie
     assert first["value"]["width"] == pytest.approx(5.0)
     assert first["value"]["height"] == pytest.approx(5.0)
     assert first["value"]["rectanglelabels"] == ["R1"]
+    # Per-region confidence carried through for the low-confidence chip (S4).
+    assert "score" in first
+    assert isinstance(first["score"], float)
 
     # annotations[] always present (even if empty) — LSF requires the array.
     assert "annotations" in task

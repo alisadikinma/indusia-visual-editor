@@ -167,6 +167,7 @@ def _prelabel_to_lsf_predictions(
     for region in prelabel.regions_json:
         bbox = region.get("bbox") or [0, 0, 0, 0]
         nx, ny, nw, nh = (float(b) for b in bbox)
+        conf = float(region.get("confidence", 0.0))
         result.append(
             {
                 # Stable per-region ID — LSF will treat each as a separate
@@ -180,6 +181,9 @@ def _prelabel_to_lsf_predictions(
                 "image_rotation": 0,
                 "original_width": 1000,
                 "original_height": 1000,
+                # Per-region confidence (0–1) carried through so the canvas
+                # can flag low-confidence predictions for operator review (S4).
+                "score": conf,
                 "value": {
                     "x": nx * 100.0,
                     "y": ny * 100.0,
@@ -190,7 +194,7 @@ def _prelabel_to_lsf_predictions(
                 },
             }
         )
-        avg_conf += float(region.get("confidence", 0.0))
+        avg_conf += conf
     return [
         {
             "model_version": "prelabel-v1",

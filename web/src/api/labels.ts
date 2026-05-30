@@ -2,12 +2,26 @@ import { apiClient } from './client'
 
 export type Side = 'top' | 'bottom'
 
+export interface LsfResult {
+  id: string
+  type: string
+  score?: number
+  value: { rectanglelabels?: string[]; [k: string]: unknown }
+  [k: string]: unknown
+}
+
+export interface LsfPrediction {
+  model_version?: string
+  score?: number
+  result: LsfResult[]
+}
+
 export interface LsfTaskEnvelope {
   config: string
   task: {
     id: number
     data: { image: string }
-    predictions: unknown[]
+    predictions: LsfPrediction[]
     annotations: unknown[]
   }
   side: Side

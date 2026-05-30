@@ -627,6 +627,8 @@
     "side": { "top": "Top side", "bottom": "Bottom side" },
     "designators": "designators",
     "predictions": "predictions",
+    "lowConfidence": "{n} low-confidence predictions",
+    "lowConfidenceHint": "Low-confidence AI predictions — review manually: {list}",
     "refreshAi": "Refresh AI predictions",
     "save": "Save labels",
     "savedAt": "Saved at {time}",

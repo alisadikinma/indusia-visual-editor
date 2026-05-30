@@ -619,6 +619,8 @@
     "side": { "top": "Sisi atas", "bottom": "Sisi bawah" },
     "designators": "designator",
     "predictions": "prediksi",
+    "lowConfidence": "{n} prediksi low-confidence",
+    "lowConfidenceHint": "Prediksi AI keyakinan rendah — periksa manual: {list}",
     "refreshAi": "Muat ulang prediksi AI",
     "save": "Simpan label",
     "savedAt": "Tersimpan pukul {time}",

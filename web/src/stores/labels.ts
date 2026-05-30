@@ -8,6 +8,12 @@ function extractMessage(err: unknown, fallback: string): string {
   return e?.response?.data?.message ?? e?.message ?? fallback
 }
 
+// A prediction below this confidence is flagged for operator review (S4).
+// This is a review nudge, not a pass/fail gate — the two HITL gates stay the
+// authority on what trains/ships. (ai-visual-inspection-expert §9: low score =
+// uncertain → route to a human.)
+export const LOW_CONFIDENCE_THRESHOLD = 0.5
+
 export const useLabelsStore = defineStore('labels', () => {
   const projectId = ref<string | null>(null)
   const side = ref<Side>('top')
@@ -27,6 +33,20 @@ export const useLabelsStore = defineStore('labels', () => {
     const preds = task.value?.task?.predictions ?? []
     return preds.length
   })
+
+  // Per-region predictions flagged below the confidence threshold (S4).
+  const lowConfidenceRegions = computed(() => {
+    const preds = task.value?.task?.predictions ?? []
+    return preds
+      .flatMap((p) => p.result ?? [])
+      .filter((r) => typeof r.score === 'number' && r.score < LOW_CONFIDENCE_THRESHOLD)
+  })
+  const lowConfidenceCount = computed(() => lowConfidenceRegions.value.length)
+  const lowConfidenceDesignators = computed(() =>
+    lowConfidenceRegions.value
+      .map((r) => r.value?.rectanglelabels?.[0])
+      .filter((d): d is string => typeof d === 'string' && d.length > 0),
+  )
 
   function reset() {
     projectId.value = null
@@ -110,6 +130,8 @@ export const useLabelsStore = defineStore('labels', () => {
     correctionSampleIds,
     designatorCount,
     predictionCount,
+    lowConfidenceCount,
+    lowConfidenceDesignators,
     reset,
     loadTask,
     refreshPredictions,
