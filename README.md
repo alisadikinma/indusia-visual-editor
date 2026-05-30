@@ -3,10 +3,10 @@
 > **From PCB photo to production inspection in hours, not days.** Zero YAML, zero CLI, zero computer-vision expertise required from the factory user.
 
 <p align="left">
-  <a href="docs/plans/2026-05-22-visual-editor-mvp.md"><img src="https://img.shields.io/badge/backend-M0--M14_shipped-047857?style=flat-square" alt="backend status" /></a>
-  <a href="docs/plans/2026-05-27-vue-fe-migration.md"><img src="https://img.shields.io/badge/frontend-F0--F6_shipped-047857?style=flat-square" alt="frontend status" /></a>
-  <img src="https://img.shields.io/badge/tests-395_backend_%2B_36_unit_%2B_8_e2e_passing-047857?style=flat-square" alt="tests passing" />
-  <img src="https://img.shields.io/badge/license-proprietary-475569?style=flat-square" alt="license" />
+  <img src="https://img.shields.io/badge/photo_→_production-one_afternoon-047857?style=flat-square" alt="photo to production in one afternoon" />
+  <img src="https://img.shields.io/badge/no_code-no_YAML_·_no_CLI-047857?style=flat-square" alt="no code required" />
+  <img src="https://img.shields.io/badge/AI-Gemma_4_plans_·_pre--labels_·_advises-047857?style=flat-square" alt="AI assisted" />
+  <img src="https://img.shields.io/badge/data-stays_on--prem-047857?style=flat-square" alt="on-prem, data stays in factory" />
 </p>
 
 ![Dashboard](docs/design/screens/02-dashboard.png)
@@ -115,47 +115,6 @@ Final HITL gate. Operator sees model snapshot + registered edges (online/offline
 | Vendored LSF binary checked into `web/public/lsf/` (~7.5 MB) | Reproducible deploys. No npm-install dependency on Label Studio's build infrastructure. |
 | Direct push to `main`, no feature branches | Solo-developer project per [CLAUDE.md §13.5](CLAUDE.md). Branching is opt-in only when explicitly requested. |
 
-## Status
-
-| Layer | Status | Notes |
-|---|---|---|
-| Backend | **M0–M14 shipped** | 395 tests passing · Auth (M13) · Production hardening (M14) · structlog + OpenTelemetry · Traefik + Postgres backup |
-| Frontend | **F0–F6 shipped** | 36 unit/component + 8 Playwright e2e passing · Full 39-screen Figma parity · MSW dev-mode mocks |
-| Runbook | Done | [`docs/runbook/{deploy,disaster-recovery,onboarding}.md`](docs/runbook/) |
-| v1.5 | Deferred | LSF ML backend protocol · runtime defect judge · multi-tenant SaaS · M15 dual-mode persistence |
-
-### Backend milestones
-
-| | What landed |
-|---|---|
-| **M0** Bootstrap | LSF build spike, FastAPI scaffold + `/health`, graphflow config spike, Vue + Vite + Pinia + Tailwind, Docker Compose dev env |
-| **M1** Project + Asset CRUD | Alembic baseline, `/api/projects` CRUD, asset upload with SHA256 dedup + 50MB cap, Dashboard view |
-| **M2** BOM parser + classifier | xlsx/csv parse with multi-designator expansion, MI/SMT heuristic, `defect_detector_mapping.yaml` (9 criteria) |
-| **M3** LLM client foundation | Ollama async httpx client with typed `LlmError` family + structured output, planner skeleton, `proposed_pipelines` table |
-| **M4** Planner adapter → graphflow | `detector_to_nodes.yaml` (13 presets → 51 nodes), per-component subgraph builder, atomic writer with rollback, `adapt_runs` table |
-| **M5** Pre-label assistant | Gemma 4 prelabel orchestrator with golden+drawing dual-image prior, `pre_labels` table (latest-wins) |
-| **M6** Labeling canvas | LSF vendored at `web/public/lsf/` with sha256 manifest, `labels` table (versioned per side), `derive_inspect_scope` writes `detector_presets` onto bom_items |
-| **M7** Training + SSE | `TrainingClient` with typed errors, `train_runs` table, `/api/training/start`, `/api/training/{run_id}/stream` SSE relay |
-| **M8** Gate 1 | `/dataset/stats` + `suggest_hyperparams` (Gemma 4, pydantic-bounded), composer endpoint |
-| **M9** Eval | `get_predictions` + `/eval` (metrics + predictions + prev-run delta) |
-| **M10** Gate 2 + promote | `services/deploy/registry.push_model` async wrapper, `deployments` table, audit-row-before-502, three env vars |
-| **M11** Edge notification + pin | `edges` table, exponential-backoff fan-out, per-edge `NotifyOutcome`, manual rollback via PUT `/pin` |
-| **M12** Chat advisor | `chat_sessions` table, context builder (system + project + last 3 train runs + 20 turns, 600 KB budget), Bahasa Indonesia advisor prompt, SSE stream |
-| **M13** Auth + roles | JWT bearer + refresh cookie, organization isolation, RBAC (admin / engineer / viewer), seed `default` org |
-| **M14** Production hardening | Multi-stage Dockerfiles, Traefik v3 (ACME + secure headers), daily pg_dump + S3, structlog JSON logs + request_id middleware, OpenTelemetry auto + manual spans, full runbook |
-
-### Frontend phases
-
-| | What landed |
-|---|---|
-| **F0** Foundation | Clean `web/` (preserved `public/lsf/` + `.gitattributes`), Vite 7 + Vue 3.5 + TS strict + Pinia 2 + Tailwind 3 + Reka UI + vue-i18n 10 + MSW 2 + Vitest 2 + Playwright 1.49 |
-| **F1** Shell + primitives | `AppShell`, `AppSidebar` (workspace + settings + AI advisor flush bottom), `AppTopBar` (breadcrumb + EN/ID switcher + engineer toggle + user logout), `AppButton` |
-| **F2** Auth + Dashboard | LoginView + SignupView wired to backend M13 `/api/auth/*` with envelope errors, refresh-cookie + bearer interceptor, `useAuthStore` with `loadCurrentUser` rehydrate; Dashboard 8:2 layout with 4 stat cards + projects table + quick-start rail |
-| **F3** Wizard | 5-step stepper (project basics → BOM → golden samples → drawing → review) wired end-to-end; `POST /api/projects` then `POST /assets?kind=` per step; BOM preview table (designator/value/package/qty/MI badge); URL rewrites `/projects/new` → real UUID after step 1 |
-| **F4** Labeling | `LSFEmbed.vue` dynamic-loads `/lsf/main.{js,css}`, instantiates `window.LabelStudio` with `reactVersion:'v18'`, wires onSubmit/onUpdate/onEntityCreate to Vue emits; `RegionDetailPanel` shows X/Y/W/H/R° + designator + 8 defect-criteria checkboxes + 4 action icons; correction mode banner driven by `?correction=1&samples=...` |
-| **F5** Training + Eval | `useTrainingStore` with full SSE consumer (epoch/succeeded/failed events update live metrics + per-component queue + 50-line log buffer); Gate 1 dual-mode (op default + engineer reveal); Training live view; SetupEvalView with test-set picker + readiness gates; EvalView state machine with threshold-coded metrics + failing-component tiles + verdict-driven actions (correct / retrain / promote) |
-| **F6** Gate 2 + settings + overlays | Gate 2 with HITL banner + model snapshot + edges card + engineer-reveal tech details + confirm-checkbox + modal interception + promote toast; 5 settings views (Models / Edges / Datasets / Team / Preferences); `ChatDrawer` overlay (M12 SSE via fetch+ReadableStream because EventSource can't POST a body); `ToastStack` overlay with 3 variants and auto-dismiss TTL |
-
 ## Tech stack
 
 | Layer | Choice | Version |
@@ -238,22 +197,6 @@ indusia-visual-editor/
 ├── CLAUDE.md                    project memory — read FIRST every session
 └── README.md                    this file
 ```
-
-## Documentation map
-
-| Doc | Purpose |
-|---|---|
-| [CLAUDE.md](CLAUDE.md) | Project memory — authoritative current-state inventory, conventions, anti-hallucination rules. **Read first.** |
-| [docs/plans/2026-05-22-visual-editor-mvp.md](docs/plans/2026-05-22-visual-editor-mvp.md) | Backend M0–M4 plan |
-| [docs/plans/2026-05-22-visual-editor-mvp-m5-m14.md](docs/plans/2026-05-22-visual-editor-mvp-m5-m14.md) | Backend M5–M14 plan |
-| [docs/plans/2026-05-27-vue-fe-migration.md](docs/plans/2026-05-27-vue-fe-migration.md) | Frontend F0–F6 design + plan |
-| [docs/specs/ml-workflow-dual-mode.md](docs/specs/ml-workflow-dual-mode.md) | ML workflow naming + operator/engineer dual-mode UI spec |
-| [docs/specs/label-studio-adoption.md](docs/specs/label-studio-adoption.md) | LSF embedding strategy + boundary |
-| [docs/specs/lsf-build.md](docs/specs/lsf-build.md) | Verified LSF build procedure |
-| [docs/specs/graphflow-config-schema.md](docs/specs/graphflow-config-schema.md) | auto-inspect-service config + locations schema |
-| [docs/runbook/deploy.md](docs/runbook/deploy.md) | First-time bootstrap + routine re-deploy + rollback |
-| [docs/runbook/disaster-recovery.md](docs/runbook/disaster-recovery.md) | Three failure classes + quarterly drill cadence |
-| [docs/runbook/onboarding.md](docs/runbook/onboarding.md) | Bahasa Indonesia operator walkthrough |
 
 ## Related projects
 
