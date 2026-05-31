@@ -4,7 +4,7 @@
 > **CRITICAL:** This plan specifies real integrations against code read on 2026-05-31. During
 > execution, NEVER substitute placeholders for real data sources without explicit user approval.
 > If a data source doesn't exist yet, STOP and ask. One such gap is already flagged below
-> (board/frame id absent from crop filenames — see §Flagged decision).
+> (crop OUTPUT drops the existing `_f{n}` board/frame provenance — see §Flagged decision).
 > **Status:** design approved + inspection-expert-validated. NO production code yet.
 > **Date:** 2026-05-31
 > **Scope:** cross-repo — `auto-inspect-engine` (heart) + `auto-inspect-service` (thin) +
@@ -49,26 +49,35 @@ disk = `good / ng / train / test / val` (MVTec layout). Crops are named `{comp_n
 | # | Decision | Grounding |
 |---|---|---|
 | a | Ratio **70/15/15** default; enforce an **absolute test floor ≥ 20–30 per defect class**. Below floor → emit `unstable: true` + reason, do NOT report a misleading F1. | SKILL §10 (stable 70/15/15), §5 (~100/class floor) |
-| b | Split **UNIT = per physical board/frame (GROUP split)**, not per crop — all crops from one board land on one side (anti-leakage). **BLOCKED today** — see §Flagged decision. Core stability ships per-image-hash first; group key layered after frame-id is embedded. | SKILL §10 (held-out stable), §9 (domain shift) |
+| b | Split **UNIT = per physical board/frame (GROUP split)**, not per crop — all crops from one board land on one side (anti-leakage). **BLOCKED today** — see §Flagged decision. Core stability ships per-image-hash first; group key (by **board**, via the existing `_f{n}` provenance) layered once crop output carries it. | SKILL §10 (held-out stable), §9 (domain shift) |
 | c | **Stratify by `defect_criterion`** so each class is represented in test; class with 0 test examples → cannot measure per-comp F1 0.70 → surface "data test kurang untuk kriterion X". | SKILL §5/§10 (class imbalance, per-comp F1 0.70) |
 | d | **Mechanism = deterministic hash `int(sha1(key+seed)) % 100 < test_pct` for default assignment + `split_manifest.json` (co-located in `output_dir`) for audit + manual override/pin.** Consult manifest first; only NEW keys get hash-assigned and appended. Fixes both failure modes (growth-stable, order-independent). | engine code reading 2026-05-31; standard group-hash partition |
 | e | **Anomaly track:** `good` → train-good + **test-good (pinned)**; **ALL `ng` → test** (anomaly trains good-only). Pin `ng` membership in the manifest too; new `ng` flagged as "perluasan coverage sejak baseline" (recall absolute not comparable unless frozen). | SKILL §3 (anomaly good-only) |
 | f | **Test set REAL-ONLY** (synthetic 400+1000 train-only); prevent synthetic↔real leak via the group key. Class 3 (medical) → recall-first, need enough escapes/class in test. | SKILL §5 (synthetic train-only), §9 (recall-first) |
 
-### Flagged decision (missing data source — STOP point)
+### Flagged decision (provenance exists at INPUT, dropped at OUTPUT — gated)
 
-Decision (b) group-by-board requires a **board/frame identifier on each crop**. Verified: crops are
-saved as `{comp_name}_{idx:05d}.png` (`setup_dataset.py:752`) — `frame_id` is used only to *filter*
-components (`crop_and_save(..., frame_id, ...)`, :670/:709), it is **NOT embedded in the output
-filename**. So group-by-board has no data source today.
+Decision (b) group-by-board needs a board identifier on each crop. The provenance is **NOT missing
+from the pipeline** — it is an existing convention: in graphflow-mode batch crop, the input frame
+images are named `{board}_f{n}.png` and the frame is resolved from the `_f{n}` suffix (README.md:168
+"Crop Input Data Format (Graphflow Mode)" + CLI.md:94; fallback = numbered folders). The gap is only
+that the crop **output** loses it — `crop_and_save` saves `{comp_name}_{idx:05d}.png`
+(`setup_dataset.py:752`), carrying neither board nor frame.
+
+Critical distinction (drives the design): **`_f{n}` is the FRAME number, not the board.** The board
+identity is the filename **prefix** (`board1` vs `board2`), and `board1_f0` / `board1_f1` are the
+*same physical board*. So for anti-leakage the group key must be the **board prefix**, NOT `_f{n}`
+(keying on `_f{n}` would wrongly merge `board1_f0` with `board2_f0`). The board prefix is available in
+the **graphflow-mode batch** crop path (input filenames); the single-frame `POST /crop` upload only
+receives `frame_id`, so that path has no board id and falls back to per-frame/per-stem.
 
 Resolution (phased, no stub):
-- **Phase group A (E-1..E-4)** ships the core stability fix keyed by **image stem** — this alone
-  fixes both failure modes and delivers the G5 goal (comparable metrics across retrains).
-- **Phase group B (E-5..E-6, gated)** embeds `frame_id` into the crop filename
-  (`{comp_name}_{frame_id}_{idx:05d}.png`) and switches the hash key to the group id. This is a
-  crop-naming change that ripples to existing datasets — old crops lack the id and fall back to
-  per-stem (safe default). **Execute B only after operator confirms the crop-naming change.**
+- **Phase group A (E-1..E-4)** ships the core stability fix keyed by **image stem** — fixes both
+  failure modes and delivers the G5 goal (comparable metrics across retrains) on its own.
+- **Phase group B (E-5..E-6, gated)** preserves the existing `_f{n}` provenance into the crop output
+  and adds the board prefix, then keys the split by **board** for anti-leakage. Backward-compatible —
+  old crops (no board/frame token) fall back to per-stem. **Execute B only after the operator confirms
+  the crop-output-naming change** (it ripples to how existing datasets are re-read).
 
 ### Honest scope
 
@@ -252,52 +261,75 @@ source (crop board/frame id) is gated behind operator confirmation in E-5, not s
 
 ## Phase group B — Group-by-board (GATED on operator confirm of crop-naming change)
 
-> Do NOT start B until the operator approves embedding `frame_id` in crop filenames (ripples to
-> existing datasets). Until then, A's per-stem split is the shipped behavior.
+> Do NOT start B until the operator approves the crop-output-naming change (ripples to how existing
+> datasets are re-read). Until then, A's per-stem split is the shipped behavior. Follow the EXISTING
+> `_f{n}` convention (README.md:168 / CLI.md:94) — do not invent a new delimiter.
 
-### Phase E-5: embed frame/board id in crop filename (prerequisite data source)
+### Phase E-5: preserve board+frame provenance into the crop output filename
 
-**Repo:** `auto-inspect-service` (+ possibly engine crop util)  **Estimated time:** 12 min
+**Repo:** `auto-inspect-service`  **Estimated time:** 14 min
+
+**Convention to follow (existing):** graphflow-mode batch input is `{board}_f{n}.png`; frame resolved
+from the `_f{n}` suffix. The output crop must carry the board id so the split can group by it. Target
+output name: `{comp_name}__{board}_f{n}__{idx:05d}.png` (double-underscore delimiters bound the
+`{board}_f{n}` provenance token so E-6 can extract it unambiguously even though comp/board contain
+single underscores). The single-frame `POST /crop` path has no board → embed `f{frame_id}` only and,
+absent a board, the group falls back to per-stem.
 
 **Files:**
-- Modify: `src/auto_inspect_service/services/setup_dataset.py` (`crop_and_save` ~752)
+- Modify: `src/auto_inspect_service/services/setup_dataset.py` (`crop_and_save` ~752; and the batch
+  `crop_from_directory` / graphflow-mode path in `services/setup_operations.py` ~477 which knows the
+  source filename → board prefix)
 - Test: `tests/unit/test_crop_naming.py`
 
 **Steps:**
-1. Write failing test: call `crop_and_save(model, image_bytes, frame_id="B7", config)` and assert each
-   written crop filename contains the frame id (e.g. `{comp}_{frame_id}_{idx:05d}.png`). Expected error:
-   `AssertionError` (current name omits frame_id).
+1. Write failing test for a pure naming helper `_crop_output_name(comp, board, frame, idx)` (extracted
+   so it is importable without the graphflow chain): asserts `R1__board1_f0__00007.png` for
+   `(comp="R1", board="board1", frame=0, idx=7)`, and `R1__f0__00007.png` when `board is None`. Expected
+   error: `ImportError`/`AttributeError` (helper absent). (Helper-level test avoids needing graphflow to
+   exercise full `crop_and_save`.)
 2. Run, confirm failure.
-3. Implement: change the dest name to include a sanitized `frame_id`. Keep reading old files (no id)
-   working — the group-key extractor (E-6) falls back to `stem` when no id segment present.
+3. Implement `_crop_output_name(...)` (sanitize tokens, `__`-bounded provenance segment) in a
+   chain-free module; have `crop_and_save` use it with `board=None` (upload path) and the batch
+   graphflow-mode crop derive `board` from the source filename prefix (strip the `_f{n}` suffix) and
+   pass it through. Old files (plain `{comp}_{idx}`) keep listing/moving fine.
 4. Run tests, confirm pass.
-5. Commit (service repo): `feat(split): embed frame_id in crop filename for group-split`.
+5. Commit (service repo): `feat(split): carry {board}_f{n} provenance into crop output filename`.
 
 **Verification:**
-- [ ] New crops carry frame id; old crops still listed/moved fine
-- [ ] No placeholder/TODO; bare-dict/no-auth conventions intact
+- [ ] Helper emits `__{board}_f{n}__` when board known, `__f{n}__` when only frame, plain when neither
+- [ ] Batch graphflow-mode crop derives board from the `_f{n}` input prefix; upload path degrades cleanly
+- [ ] Old crops still listed/moved fine; no placeholder/TODO; bare-dict/no-auth conventions intact
 
-### Phase E-6: switch hash key to group (board) id
+### Phase E-6: key the split by BOARD id (anti-leakage), parsing the `_f{n}` provenance
 
-**Repo:** `auto-inspect-engine`  **Estimated time:** 12 min
+**Repo:** `auto-inspect-engine`  **Estimated time:** 14 min
 
 **Files:**
-- Modify: `src/auto_inspect_engine/utils/preprocessing.py` (+ `train_yolo.py`)
-- Test: `tests/test_stable_split.py` (extend)
+- Modify: `src/auto_inspect_engine/utils/stable_split.py` (add `group_key_for`), wire into
+  `preprocessing.prepare_anomaly_dataset` + `cli/train_yolo.split_dataset`
+- Test: `tests/test_stable_split.py` + `tests/test_anomaly_split.py` (extend)
 
 **Steps:**
-1. Write failing test: two good crops sharing frame id `B7` plus others; assert both `B7` crops land in
-   the SAME split bucket (no train↔test leakage). Expected error: `AssertionError` (per-stem split can
-   separate them).
+1. Write failing test: `group_key_for("R1__board1_f0__00007")` == `"board1"` and
+   `group_key_for("C4__board1_f1__00002")` == `"board1"` (same board, different frame → SAME key);
+   `group_key_for("R1__board2_f0__00001")` == `"board2"`; `group_key_for("R1__f0__00003")` ==
+   `"f0"` (no board → frame token); `group_key_for("R1_00009")` == `"R1_00009"` (legacy → stem
+   fallback). Plus an anomaly-split test: two good crops of the same board across frames land in the
+   SAME bucket. Expected error: `ImportError` (`group_key_for` absent).
 2. Run, confirm failure.
-3. Implement `group_key_for(path) -> str` parsing the `{comp}_{frameid}_{idx}` pattern (fallback:
-   `path.stem` when no id) and key `stable_assign`/manifest by the group id so all crops of a board move
-   together. Manifest `members` now keyed by group id.
+3. Implement `group_key_for(path) -> str`: extract the `__…__` provenance token; if it contains
+   `{board}_f{n}` return the **board** prefix (strip the trailing `_f{n}`); if only `f{n}`, return that;
+   else fall back to `path.stem`. Switch `prepare_anomaly_dataset` + `split_dataset` to key
+   `stable_assign`/`stable_partition` + the manifest by `group_key_for(p)` instead of `p.stem`.
+   Manifest `members` then keyed by board, so all crops of a board move together.
 4. Run tests, confirm pass.
-5. Commit: `feat(split): group-by-board split key (anti-leakage)`.
+5. Commit: `feat(split): group-by-board split key (anti-leakage) via _f{n} provenance`.
 
 **Verification:**
-- [ ] Crops sharing a frame id never split across train/test
+- [ ] Crops sharing a board (across frames) never split across train/test; different boards independent
+- [ ] Frame-only and legacy names degrade correctly (frame token / stem)
+- [ ] Manifest keyed by group; no placeholder/TODO
 - [ ] Fallback to stem when id absent (old data); manifest keyed by group
 - [ ] No placeholder/TODO
 
