@@ -604,7 +604,13 @@ export const handlers = [
       uploaded_at: new Date().toISOString(),
     }
     const existing = assetsDb.get(projectId) ?? []
-    assetsDb.set(projectId, [...existing.filter((a) => a.kind !== kind), asset])
+    // G1: a side accepts N golden boards (multi-sample good set) — append.
+    // bom + drawing remain single-slot, so replace any existing same-kind row.
+    const isGolden = kind === 'golden_top' || kind === 'golden_bottom'
+    assetsDb.set(
+      projectId,
+      isGolden ? [...existing, asset] : [...existing.filter((a) => a.kind !== kind), asset],
+    )
 
     // Auto-parse BOM on upload to simulate backend pipeline
     if (kind === 'bom' && !bomDb.has(projectId)) {

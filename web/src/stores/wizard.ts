@@ -32,6 +32,12 @@ export const useWizardStore = defineStore('wizard', () => {
   const draftSlug = ref('')
 
   const assets = ref<Partial<Record<AssetKind, Asset>>>({})
+  // G1: each side accepts N golden boards (a multi-sample good set → a better
+  // anomaly baseline). golden_top / golden_bottom live in these arrays, NOT in
+  // the single-slot `assets` map (which stays the source of truth for bom +
+  // drawing only).
+  const goldenTop = ref<Asset[]>([])
+  const goldenBottom = ref<Asset[]>([])
   const bomItems = ref<BomItem[]>([])
 
   const busy = ref(false)
@@ -52,7 +58,7 @@ export const useWizardStore = defineStore('wizard', () => {
         // Top side mandatory, bottom side optional. Most single-side
         // PCBs (LED strips, simple sensor boards) have no through-hole
         // components on the bottom to inspect.
-        return assets.value.golden_top != null
+        return goldenTop.value.length > 0
       case 'drawing':
         return assets.value.drawing != null
       case 'review':
@@ -68,6 +74,8 @@ export const useWizardStore = defineStore('wizard', () => {
     draftName.value = ''
     draftSlug.value = ''
     assets.value = {}
+    goldenTop.value = []
+    goldenBottom.value = []
     bomItems.value = []
     busy.value = false
     error.value = null
@@ -108,12 +116,26 @@ export const useWizardStore = defineStore('wizard', () => {
     error.value = null
     try {
       const uploaded = await assetsApi.uploadAsset(project.value.id, kind, file)
-      assets.value = { ...assets.value, [kind]: uploaded }
+      if (kind === 'golden_top') {
+        goldenTop.value = [...goldenTop.value, uploaded]
+      } else if (kind === 'golden_bottom') {
+        goldenBottom.value = [...goldenBottom.value, uploaded]
+      } else {
+        assets.value = { ...assets.value, [kind]: uploaded }
+      }
     } catch (err) {
       error.value = extractMessage(err, 'Upload failed')
       throw err
     } finally {
       busy.value = false
+    }
+  }
+
+  function removeGolden(kind: 'golden_top' | 'golden_bottom', assetId: string) {
+    if (kind === 'golden_top') {
+      goldenTop.value = goldenTop.value.filter((a) => a.id !== assetId)
+    } else {
+      goldenBottom.value = goldenBottom.value.filter((a) => a.id !== assetId)
     }
   }
 
@@ -151,6 +173,8 @@ export const useWizardStore = defineStore('wizard', () => {
     draftName,
     draftSlug,
     assets,
+    goldenTop,
+    goldenBottom,
     bomItems,
     busy,
     error,
@@ -160,6 +184,7 @@ export const useWizardStore = defineStore('wizard', () => {
     autofillSlug,
     createProject,
     uploadAsset,
+    removeGolden,
     fetchBomItems,
     next,
     back,

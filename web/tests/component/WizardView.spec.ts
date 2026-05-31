@@ -151,6 +151,25 @@ describe('WizardView', () => {
     expect(wrapper.find('[data-testid="wizard-photo-tips"]').exists()).toBe(true)
   })
 
+  it('step 3 renders one golden tile per uploaded board with a remove button (G1)', async () => {
+    const { wrapper } = await mountWizard()
+    const store = useWizardStore()
+    store.project = { id: 'p1', name: 'X', slug: 'x', status: 'drafting', organization_id: 'o', created_at: '', updated_at: '' }
+    store.goldenTop = [
+      { ...fakeAsset('golden_top', 1000), id: 'top-1' },
+      { ...fakeAsset('golden_top', 2000), id: 'top-2' },
+    ]
+    await jumpTo(wrapper, 2)
+    expect(wrapper.find('[data-testid="wizard-golden-strip-top"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-testid="wizard-golden-tile-top"]').length).toBe(2)
+    const removeBtns = wrapper.findAll('[data-testid="wizard-golden-remove-top"]')
+    expect(removeBtns.length).toBe(2)
+    await removeBtns[0]!.trigger('click')
+    await nextTick()
+    expect(store.goldenTop.length).toBe(1)
+    expect(wrapper.findAll('[data-testid="wizard-golden-tile-top"]').length).toBe(1)
+  })
+
   it('step 4 shows the drawing dropzone and example card', async () => {
     const { wrapper } = await mountWizard()
     await jumpTo(wrapper, 3)
@@ -166,9 +185,9 @@ describe('WizardView', () => {
     store.draftSlug = 'mainboard-xr-200'
     store.assets = {
       bom: fakeAsset('bom', 188_416),
-      golden_top: fakeAsset('golden_top', 4_404_019),
       drawing: fakeAsset('drawing', 1_887_436),
     }
+    store.goldenTop = [fakeAsset('golden_top', 4_404_019)]
     store.bomItems = SAMPLE_BOM
     await jumpTo(wrapper, 4)
     expect(wrapper.findAll('[data-testid="wizard-review-row"]').length).toBeGreaterThanOrEqual(4)

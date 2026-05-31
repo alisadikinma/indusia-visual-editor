@@ -15,7 +15,7 @@ vi.mock('@/api/projects', () => ({
 
 vi.mock('@/api/assets', () => ({
   uploadAsset: vi.fn(async (projectId: string, kind: string, file: File) => ({
-    id: `asset-${kind}`,
+    id: `asset-${kind}-${file.name}`,
     project_id: projectId,
     kind,
     path: `${projectId}/${kind}/${file.name}`,
@@ -24,6 +24,8 @@ vi.mock('@/api/assets', () => ({
     size_bytes: file.size,
     uploaded_at: '2026-05-27T00:00:00Z',
   })),
+  assetBinaryUrl: (projectId: string, assetId: string) =>
+    `/api/projects/${projectId}/assets/${assetId}/binary`,
 }))
 
 vi.mock('@/api/bom', () => ({
@@ -104,5 +106,60 @@ describe('wizard store', () => {
     await wizard.next() // fetch bom items, → golden
     expect(wizard.bomItems.length).toBe(1)
     expect(wizard.currentStep).toBe('golden')
+  })
+
+  // ───── G1: multi-sample golden set per side ─────
+
+  async function newWizardWithProject() {
+    const wizard = useWizardStore()
+    wizard.draftName = 'PCB-A'
+    wizard.draftSlug = 'pcb-a'
+    await wizard.createProject()
+    return wizard
+  }
+
+  it('uploading two golden_top boards appends to the array', async () => {
+    const wizard = await newWizardWithProject()
+    await wizard.uploadAsset('golden_top', new File(['1'], 'board-1.jpg', { type: 'image/jpeg' }))
+    await wizard.uploadAsset('golden_top', new File(['2'], 'board-2.jpg', { type: 'image/jpeg' }))
+    expect(wizard.goldenTop.length).toBe(2)
+    expect(wizard.goldenBottom.length).toBe(0)
+  })
+
+  it('golden_top upload does NOT populate the single-slot assets map', async () => {
+    const wizard = await newWizardWithProject()
+    await wizard.uploadAsset('golden_top', new File(['1'], 'board-1.jpg', { type: 'image/jpeg' }))
+    expect(wizard.assets.golden_top).toBeUndefined()
+    // arrays are the source of truth
+    expect(wizard.goldenTop.length).toBe(1)
+  })
+
+  it('canAdvance on golden step is true after one golden_top board', async () => {
+    const wizard = await newWizardWithProject()
+    // jump store to golden step
+    wizard.stepIndex = 2
+    expect(wizard.currentStep).toBe('golden')
+    expect(wizard.canAdvance).toBe(false)
+    await wizard.uploadAsset('golden_top', new File(['1'], 'board-1.jpg', { type: 'image/jpeg' }))
+    expect(wizard.canAdvance).toBe(true)
+  })
+
+  it('removeGolden drops the matching board from the side array', async () => {
+    const wizard = await newWizardWithProject()
+    await wizard.uploadAsset('golden_top', new File(['1'], 'board-1.jpg', { type: 'image/jpeg' }))
+    await wizard.uploadAsset('golden_top', new File(['2'], 'board-2.jpg', { type: 'image/jpeg' }))
+    const removeId = wizard.goldenTop[0]!.id
+    wizard.removeGolden('golden_top', removeId)
+    expect(wizard.goldenTop.length).toBe(1)
+    expect(wizard.goldenTop.some((a) => a.id === removeId)).toBe(false)
+  })
+
+  it('reset() clears both golden arrays', async () => {
+    const wizard = await newWizardWithProject()
+    await wizard.uploadAsset('golden_top', new File(['1'], 'board-1.jpg', { type: 'image/jpeg' }))
+    await wizard.uploadAsset('golden_bottom', new File(['2'], 'board-2.jpg', { type: 'image/jpeg' }))
+    wizard.reset()
+    expect(wizard.goldenTop.length).toBe(0)
+    expect(wizard.goldenBottom.length).toBe(0)
   })
 })

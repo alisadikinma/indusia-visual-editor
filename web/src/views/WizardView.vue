@@ -5,12 +5,17 @@ import { useI18n } from 'vue-i18n'
 import AppButton from '@/components/primitives/AppButton.vue'
 import { useWizardStore } from '@/stores/wizard'
 import { useProjectsStore } from '@/stores/projects'
-import type { AssetKind, GoldenQc, QcVerdict } from '@/api/assets'
+import { assetBinaryUrl } from '@/api/assets'
+import type { Asset, AssetKind, GoldenQc, QcVerdict } from '@/api/assets'
 
 const previewUrls = reactive<Partial<Record<AssetKind, string>>>({})
 const dimensions = reactive<Partial<Record<AssetKind, { w: number; h: number }>>>({})
 const fileNames = reactive<Partial<Record<AssetKind, string>>>({})
 const bottomSkipped = ref(false)
+// G1: object-URL previews for golden boards, keyed by asset id (each side
+// holds N boards). Falls back to the backend binary URL once the local file
+// preview is revoked / unavailable.
+const goldenPreviews = reactive<Record<string, string>>({})
 
 function readDimensions(kind: AssetKind, url: string) {
   const img = new Image()
@@ -115,6 +120,26 @@ async function onFile(kind: AssetKind, e: Event) {
     wizard.error = t('wizard.errMissingProject')
     return
   }
+  const isGolden = kind === 'golden_top' || kind === 'golden_bottom'
+  if (isGolden) {
+    // G1: each board keeps its own preview, keyed by the asset id assigned
+    // after upload. Stash the object URL, then bind it once the id is known.
+    const url = file.type.startsWith('image/') ? URL.createObjectURL(file) : null
+    bottomSkipped.value = false
+    try {
+      const before = sideArray(kind).length
+      await wizard.uploadAsset(kind, file)
+      const added = sideArray(kind)[before]
+      if (added && url) goldenPreviews[added.id] = url
+      else if (url) URL.revokeObjectURL(url)
+    } catch {
+      if (url) URL.revokeObjectURL(url)
+    } finally {
+      input.value = ''
+    }
+    return
+  }
+
   if (file.type.startsWith('image/')) {
     if (previewUrls[kind]) URL.revokeObjectURL(previewUrls[kind]!)
     const url = URL.createObjectURL(file)
@@ -125,7 +150,6 @@ async function onFile(kind: AssetKind, e: Event) {
   } else {
     fileNames[kind] = file.name
   }
-  if (kind === 'golden_bottom') bottomSkipped.value = false
   try {
     await wizard.uploadAsset(kind, file)
   } catch {
@@ -135,8 +159,28 @@ async function onFile(kind: AssetKind, e: Event) {
   }
 }
 
+function sideArray(kind: 'golden_top' | 'golden_bottom'): Asset[] {
+  return kind === 'golden_top' ? wizard.goldenTop : wizard.goldenBottom
+}
+
+function goldenTileSrc(projectId: string | null, asset: Asset): string {
+  return goldenPreviews[asset.id] ?? (projectId ? assetBinaryUrl(projectId, asset.id) : '')
+}
+
+function removeGoldenBoard(kind: 'golden_top' | 'golden_bottom', asset: Asset) {
+  const url = goldenPreviews[asset.id]
+  if (url) {
+    URL.revokeObjectURL(url)
+    delete goldenPreviews[asset.id]
+  }
+  wizard.removeGolden(kind, asset.id)
+}
+
 onUnmounted(() => {
   for (const url of Object.values(previewUrls)) {
+    if (url) URL.revokeObjectURL(url)
+  }
+  for (const url of Object.values(goldenPreviews)) {
     if (url) URL.revokeObjectURL(url)
   }
 })
@@ -189,19 +233,26 @@ const reviewRows = computed(() => {
       sub: t('wizard.bomItemsLine', { items: wizard.bomItems.length, mi: miCount.value }),
     })
   }
-  for (const [kind, catKey] of [
-    ['golden_top', 'wizard.catGoldenTop'],
-    ['golden_bottom', 'wizard.catGoldenBottom'],
-    ['drawing', 'wizard.catDrawing'],
+  for (const [catKey, list] of [
+    ['wizard.catGoldenTop', wizard.goldenTop],
+    ['wizard.catGoldenBottom', wizard.goldenBottom],
   ] as const) {
-    const a = wizard.assets[kind]
-    if (!a) continue
-    const dims = dimLabel(kind)
+    if (list.length === 0) continue
+    rows.push({
+      step: 2,
+      catKey,
+      value: t('wizard.goldenCount', { n: list.length }),
+      sub: list.map((a) => formatBytes(a.size_bytes)).filter(Boolean).join(' · '),
+    })
+  }
+  if (wizard.assets.drawing) {
+    const a = wizard.assets.drawing
+    const dims = dimLabel('drawing')
     const parts = [formatBytes(a.size_bytes), dims].filter(Boolean)
     rows.push({
-      step: kind === 'drawing' ? 3 : 2,
-      catKey,
-      value: assetName(kind) ?? '—',
+      step: 3,
+      catKey: 'wizard.catDrawing',
+      value: assetName('drawing') ?? '—',
       sub: parts.join(' · '),
     })
   }
@@ -510,84 +561,82 @@ const whatNext = [1, 2, 3, 4].map((n) => ({
       data-testid="wizard-panel"
       class="space-y-5"
     >
+      <p class="text-xs text-ink-500 max-w-3xl leading-snug">{{ t('wizard.goldenMultiHint') }}</p>
       <div class="grid grid-cols-1 lg:grid-cols-[1fr_1fr_300px] gap-4">
-        <label
+        <section
           v-for="side in [
-            { kind: 'golden_top' as AssetKind, tid: 'wizard-golden-top', dropKey: 'wizard.goldenDropTop', tag: 'TOP' },
-            { kind: 'golden_bottom' as AssetKind, tid: 'wizard-golden-bottom', dropKey: 'wizard.goldenDropBottom', tag: 'BOTTOM' },
+            { kind: 'golden_top' as 'golden_top' | 'golden_bottom', tag: 'TOP', dropKey: 'wizard.goldenDropTop', stripTid: 'wizard-golden-strip-top', tileTid: 'wizard-golden-tile-top', removeTid: 'wizard-golden-remove-top' },
+            { kind: 'golden_bottom' as 'golden_top' | 'golden_bottom', tag: 'BOTTOM', dropKey: 'wizard.goldenDropBottom', stripTid: 'wizard-golden-strip-bottom', tileTid: 'wizard-golden-tile-bottom', removeTid: 'wizard-golden-remove-bottom' },
           ]"
           :key="side.kind"
-          :data-testid="side.tid"
-          class="group relative flex flex-col rounded-xl p-4 cursor-pointer transition min-h-[300px]"
-          :class="[
-            wizard.assets[side.kind]
-              ? 'bg-primary-50 border-2 border-primary-500'
-              : 'bg-white border-2 border-dashed border-ink-300 hover:border-primary-400',
-            wizard.busy ? 'opacity-60 pointer-events-none' : '',
-          ]"
+          class="flex flex-col gap-3"
         >
-          <template v-if="wizard.assets[side.kind]">
-            <div
-              class="flex-1 rounded-lg overflow-hidden bg-ink-900 grid place-items-center min-h-[150px] relative"
+          <label
+            :data-testid="side.kind === 'golden_top' ? 'wizard-golden-top' : 'wizard-golden-bottom'"
+            class="group relative flex flex-col items-center justify-center text-center rounded-xl p-4 cursor-pointer transition min-h-[140px]"
+            :class="[
+              sideArray(side.kind).length > 0
+                ? 'bg-white border-2 border-primary-300 hover:border-primary-400'
+                : 'bg-white border-2 border-dashed border-ink-300 hover:border-primary-400',
+              wizard.busy ? 'opacity-60 pointer-events-none' : '',
+            ]"
+          >
+            <span class="h-10 w-10 grid place-items-center rounded-full bg-ink-100 text-ink-500 text-lg mb-2">↑</span>
+            <span class="text-sm font-medium text-ink-700">
+              {{ sideArray(side.kind).length > 0 ? t('wizard.goldenAddMore') : t(side.dropKey) }}
+            </span>
+            <span class="mt-1 text-xs text-ink-500 max-w-[220px]">{{ t('wizard.goldenFileHint') }}</span>
+            <span class="absolute top-2 right-3 text-[10px] font-mono uppercase tracking-wider text-ink-400">
+              {{ side.tag }}
+            </span>
+            <input type="file" accept="image/*" class="hidden" @change="onFile(side.kind, $event)" />
+          </label>
+
+          <p
+            v-if="sideArray(side.kind).length > 0"
+            class="text-[11px] font-mono uppercase tracking-wider text-ink-500"
+          >
+            {{ t('wizard.goldenCount', { n: sideArray(side.kind).length }) }}
+          </p>
+
+          <ul
+            v-if="sideArray(side.kind).length > 0"
+            :data-testid="side.stripTid"
+            class="grid grid-cols-2 gap-2.5"
+          >
+            <li
+              v-for="board in sideArray(side.kind)"
+              :key="board.id"
+              :data-testid="side.tileTid"
+              class="relative rounded-lg overflow-hidden border border-primary-200 bg-ink-900"
             >
               <img
-                v-if="previewUrls[side.kind]"
-                :src="previewUrls[side.kind]"
+                :src="goldenTileSrc(wizard.projectId, board)"
                 :alt="side.tag"
-                class="h-full w-full object-cover"
+                class="h-28 w-full object-cover"
               />
-              <span
-                v-else
-                class="text-[10px] font-mono uppercase tracking-wider text-ink-300"
+              <button
+                type="button"
+                :data-testid="side.removeTid"
+                :aria-label="t('wizard.goldenRemove')"
+                :title="t('wizard.goldenRemove')"
+                class="absolute top-1 right-1 h-6 w-6 grid place-items-center rounded-full bg-ink-900/70 text-white text-xs hover:bg-red-600 transition"
+                @click.prevent="removeGoldenBoard(side.kind, board)"
               >
-                {{ side.tag }}
-              </span>
+                ✕
+              </button>
               <span
-                class="absolute bottom-2 right-2 text-[10px] font-mono uppercase tracking-wider text-primary-300/80"
+                v-if="board.qc"
+                :data-testid="`wizard-qc-${board.id}`"
+                class="absolute bottom-1 left-1 inline-flex items-center h-5 px-2 rounded-full text-[10px] font-medium"
+                :class="qcTone(board.qc.verdict)"
+                :title="qcTitle(board.qc)"
               >
-                {{ side.tag }}
+                {{ t(`wizard.qc.${board.qc.verdict}`) }}
               </span>
-            </div>
-            <div class="mt-3 flex flex-col items-center text-center">
-              <span class="h-6 w-6 grid place-items-center rounded-full bg-primary-600 text-white text-xs">✓</span>
-              <span class="mt-1.5 text-sm font-medium text-ink-900 font-mono truncate max-w-full">
-                {{ assetName(side.kind) }}
-                <span v-if="wizard.assets[side.kind]?.size_bytes" class="text-ink-500">
-                  · {{ formatBytes(wizard.assets[side.kind]!.size_bytes) }}
-                </span>
-              </span>
-              <span class="text-xs text-primary-700 mt-0.5">
-                {{ t('wizard.uploadedLabel') }}<template v-if="dimLabel(side.kind)"> · {{ dimLabel(side.kind) }}</template>
-              </span>
-              <span
-                v-if="wizard.assets[side.kind]?.qc"
-                :data-testid="`wizard-qc-${side.kind}`"
-                class="mt-1.5 inline-flex items-center gap-1 h-5 px-2 rounded-full text-[11px] font-medium"
-                :class="qcTone(wizard.assets[side.kind]!.qc!.verdict)"
-                :title="qcTitle(wizard.assets[side.kind]!.qc!)"
-              >
-                {{ t(`wizard.qc.${wizard.assets[side.kind]!.qc!.verdict}`) }}
-              </span>
-              <span class="mt-2 text-[11px] text-ink-500 opacity-0 group-hover:opacity-100 transition">
-                {{ t('wizard.replaceImage') }}
-              </span>
-            </div>
-          </template>
-
-          <template v-else>
-            <div class="flex-1 grid place-items-center">
-              <div class="flex flex-col items-center text-center">
-                <span class="h-12 w-12 grid place-items-center rounded-full bg-ink-100 text-ink-500 text-xl mb-3">↑</span>
-                <span class="text-sm font-medium text-ink-700">{{ t(side.dropKey) }}</span>
-                <span class="mt-1 text-xs text-ink-500 max-w-[200px]">
-                  {{ t('wizard.goldenFileHint') }}
-                </span>
-              </div>
-            </div>
-          </template>
-
-          <input type="file" accept="image/*" class="hidden" @change="onFile(side.kind, $event)" />
-        </label>
+            </li>
+          </ul>
+        </section>
 
         <aside
           data-testid="wizard-photo-tips"
@@ -618,7 +667,7 @@ const whatNext = [1, 2, 3, 4].map((n) => ({
 
       <!-- Both uploaded -->
       <div
-        v-if="wizard.assets.golden_top && wizard.assets.golden_bottom"
+        v-if="wizard.goldenTop.length > 0 && wizard.goldenBottom.length > 0"
         class="flex items-start gap-3 rounded-xl bg-primary-50 border border-primary-200 px-4 py-3 max-w-3xl"
       >
         <span class="h-6 w-6 grid place-items-center rounded-full bg-primary-600 text-white text-xs mt-0.5">✓</span>
@@ -630,7 +679,7 @@ const whatNext = [1, 2, 3, 4].map((n) => ({
 
       <!-- Bottom missing warning -->
       <div
-        v-else-if="wizard.assets.golden_top && !bottomSkipped"
+        v-else-if="wizard.goldenTop.length > 0 && !bottomSkipped"
         class="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 max-w-3xl"
       >
         <span class="text-lg leading-none mt-0.5">⚠</span>
@@ -648,7 +697,7 @@ const whatNext = [1, 2, 3, 4].map((n) => ({
       </div>
 
       <div
-        v-else-if="wizard.assets.golden_top && bottomSkipped"
+        v-else-if="wizard.goldenTop.length > 0 && bottomSkipped"
         class="flex items-center gap-3 rounded-xl bg-surface-raised border border-border-default px-4 py-2.5 text-xs text-ink-600 max-w-3xl"
       >
         <span>{{ t('wizard.goldenBottomOptional') }}</span>
