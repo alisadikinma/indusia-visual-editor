@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime, timezone
+from pathlib import PurePosixPath
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import desc, select
@@ -228,6 +229,62 @@ async def list_training_runs(
         )
     ).scalars().all()
     return success(data=[_serialize(r) for r in rows])
+
+
+@router.get("/split-status")
+async def get_split_status(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    """Proxy the stable held-out split status (G5 / V-1) from auto-inspect-service.
+
+    Resolves the service model name from the project's latest AdaptRun.model_dir
+    (basename, separator-agnostic), then reads the locked split via the existing
+    inspect-service client (base URL = `IVE_INSPECT_SERVICE_URL`, never a
+    hardcoded port). Returns the `{status,message,data}` envelope; `data` is the
+    service split aggregate, or `null` when the project has no pipeline yet.
+    """
+    await get_project(session, project_id)
+
+    latest_adapt = (
+        await session.execute(
+            select(AdaptRun)
+            .where(AdaptRun.project_id == project_id)
+            .order_by(desc(AdaptRun.created_at))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest_adapt is None or not latest_adapt.model_dir:
+        return success(
+            data=None,
+            message="project belum punya pipeline; belum ada split untuk ditampilkan",
+        )
+
+    model_name = PurePosixPath(str(latest_adapt.model_dir).replace("\\", "/")).name
+
+    cfg = get_config()
+    client = _training_client_factory(
+        base_url=cfg.inspect_service_url, timeout=cfg.inspect_service_timeout
+    )
+    try:
+        try:
+            payload = await client.get_split_status(model_name)
+        except (
+            InspectServiceConnectionError,
+            InspectServiceTimeoutError,
+            InspectServiceResponseError,
+        ) as exc:
+            raise HTTPException(
+                status_code=502, detail=f"auto-inspect-service unavailable: {exc}"
+            )
+        except InspectServiceError as exc:
+            raise HTTPException(
+                status_code=502, detail=f"auto-inspect-service error: {exc}"
+            )
+    finally:
+        await client.aclose()
+
+    return success(data=payload)
 
 
 # ---------------- Phase 7.4 — SSE relay ----------------

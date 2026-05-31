@@ -168,6 +168,52 @@ class TrainingClient:
             )
         return payload
 
+    async def get_split_status(self, model_name: str) -> dict[str, Any]:
+        """GET `/api/setup/{model_name}/split-status`, return the split aggregate.
+
+        The service contract (G5 / S-2) is a bare dict:
+        ``{model_name, seed, test_pct, min_test_per_class, per_component:[...]}``.
+        The client round-trips it verbatim — verdict/threshold interpretation
+        lives in the frontend (`api/eval.ts`).
+
+        Raises:
+            InspectServiceConnectionError — service unreachable.
+            InspectServiceTimeoutError — service did not respond in time.
+            InspectServiceResponseError — non-2xx, malformed JSON, or non-dict
+                payload (includes 404 for an unprepared/unknown model).
+        """
+
+        path = f"/api/setup/{model_name}/split-status"
+        try:
+            r = await self._http.get(path)
+        except httpx.TimeoutException as exc:
+            raise InspectServiceTimeoutError(
+                f"auto-inspect-service timed out on {path}: {exc}"
+            ) from exc
+        except (httpx.ConnectError, httpx.TransportError) as exc:
+            raise InspectServiceConnectionError(
+                f"Could not reach auto-inspect-service {path}: {exc}"
+            ) from exc
+
+        if not (200 <= r.status_code < 300):
+            raise InspectServiceResponseError(
+                f"auto-inspect-service {path} returned {r.status_code}: {r.text[:300]}"
+            )
+
+        try:
+            payload = r.json()
+        except ValueError as exc:
+            raise InspectServiceResponseError(
+                f"auto-inspect-service {path} returned non-JSON body: {r.text[:300]}"
+            ) from exc
+
+        if not isinstance(payload, dict):
+            raise InspectServiceResponseError(
+                f"auto-inspect-service {path} returned non-dict payload: "
+                f"{type(payload).__name__}"
+            )
+        return payload
+
     async def stream_progress(self, job_id: str) -> AsyncIterator[dict[str, Any]]:
         """Open the SSE progress stream and yield decoded JSON dicts.
 
