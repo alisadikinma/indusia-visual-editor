@@ -175,7 +175,11 @@
     "goldenBottom": "Sisi bawah",
     "goldenBottomOptional": "Opsional — lewati kalau sisi bawah tidak ada komponen yang perlu diinspeksi.",
     "replaceImage": "Ganti gambar",
-    "qc": { "ok": "Kualitas OK", "warn": "Perlu dicek", "fail": "Kualitas buruk" },
+    "qc": {
+      "ok": "Kualitas OK",
+      "warn": "Perlu dicek",
+      "fail": "Kualitas buruk"
+    },
     "qcReason": {
       "blur_fail": "blur/defokus",
       "blur_warn": "agak blur",
@@ -320,14 +324,23 @@
     "kicker": "Pengaturan · model",
     "title": "Registry model",
     "subhead": "Semua model terlatih lintas proyek, dengan status promosi + pin.",
-    "filter": { "all": "Semua", "production": "Produksi", "staged": "Staging", "archived": "Arsip" },
+    "filter": {
+      "all": "Semua",
+      "production": "Produksi",
+      "staged": "Staging",
+      "archived": "Arsip"
+    },
     "colProject": "Proyek",
     "colVersion": "Versi",
     "colSize": "Ukuran",
     "colPinned": "Edge ter-pin",
     "colStatus": "Status",
     "colPromoted": "Dipasang",
-    "status": { "production": "Produksi", "staged": "Staging", "archived": "Arsip" },
+    "status": {
+      "production": "Produksi",
+      "staged": "Staging",
+      "archived": "Arsip"
+    },
     "empty": "Tidak ada model untuk filter ini.",
     "summary": "{n} versi total · semua project · diurutkan dari yang terbaru"
   },
@@ -369,7 +382,11 @@
     "colRegions": "Region",
     "colSize": "Ukuran",
     "colCreated": "Dibuat",
-    "kind": { "training": "Pelatihan", "holdout": "Holdout", "production_run": "Run edge" },
+    "kind": {
+      "training": "Pelatihan",
+      "holdout": "Holdout",
+      "production_run": "Run edge"
+    },
     "empty": "Belum ada dataset.",
     "summary": "{n} dataset · {regions} anotasi total",
     "library": {
@@ -387,7 +404,11 @@
     "colRole": "Peran",
     "colLastActive": "Aktivitas terakhir",
     "colCreated": "Dibuat",
-    "role": { "admin": "Admin", "engineer": "Insinyur", "viewer": "Pengamat" },
+    "role": {
+      "admin": "Admin",
+      "engineer": "Insinyur",
+      "viewer": "Pengamat"
+    },
     "neverActive": "Belum pernah aktif",
     "empty": "Belum ada anggota tim.",
     "summary": "{n} anggota · default organization",
@@ -411,7 +432,10 @@
     "themeBlurb": "Berlaku di perangkat ini.",
     "themeLight": "Terang",
     "themeDark": "Gelap",
-    "lang": { "id": "Bahasa Indonesia", "en": "English" },
+    "lang": {
+      "id": "Bahasa Indonesia",
+      "en": "English"
+    },
     "storedLocal": "Preferensi ini disimpan di localStorage dan tidak sinkron antar perangkat."
   },
   "feedback": {
@@ -543,7 +567,11 @@
       "failed": "Gagal",
       "cancelled": "Dibatalkan"
     },
-    "state": { "queued": "Antri", "training": "Berlatih", "done": "Selesai" },
+    "state": {
+      "queued": "Antri",
+      "training": "Berlatih",
+      "done": "Selesai"
+    },
     "epoch": "Epoch",
     "streaming": "Streaming peristiwa",
     "idle": "Stream berhenti",
@@ -613,7 +641,17 @@
     "coverage": "Cakupan",
     "duration": "Durasi",
     "backToTraining": "Kembali ke pelatihan",
-    "startEval": "Mulai evaluasi"
+    "startEval": "Mulai evaluasi",
+    "split": {
+      "lockedTitle": "Set uji terkunci",
+      "lockedBlurb": "Gambar yang sama setiap latih ulang, jadi metrik tetap bisa dibandingkan.",
+      "seedLabel": "Seed",
+      "totalTest": "{n} gambar uji",
+      "components": "{n} komponen",
+      "belowFloorTitle": "Data uji kurang untuk sebagian kriteria",
+      "belowFloorItem": "{component} · {cls}: {count} gambar uji",
+      "belowFloorNote": "F1 per-komponen untuk ini belum stabil — tambah contoh cacat asli sebelum percaya pada gate."
+    }
   },
   "eval": {
     "kicker": "Hasil evaluasi",
@@ -648,7 +686,10 @@
   },
   "labeling": {
     "title": "Kanvas pelabelan",
-    "side": { "top": "Sisi atas", "bottom": "Sisi bawah" },
+    "side": {
+      "top": "Sisi atas",
+      "bottom": "Sisi bawah"
+    },
     "designators": "designator",
     "predictions": "prediksi",
     "lowConfidence": "{n} prediksi low-confidence",

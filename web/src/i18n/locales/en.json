@@ -175,7 +175,11 @@
     "goldenBottom": "Bottom side",
     "goldenBottomOptional": "Optional — skip if the bottom side has no inspectable components.",
     "replaceImage": "Replace image",
-    "qc": { "ok": "Quality OK", "warn": "Needs review", "fail": "Poor quality" },
+    "qc": {
+      "ok": "Quality OK",
+      "warn": "Needs review",
+      "fail": "Poor quality"
+    },
     "qcReason": {
       "blur_fail": "blurry/defocused",
       "blur_warn": "slightly soft",
@@ -320,7 +324,12 @@
     "kicker": "Settings · models",
     "title": "Models registry",
     "subhead": "All trained models across projects, with their promotion + pin state.",
-    "filter": { "all": "All", "production": "Production", "staged": "Staged", "archived": "Archived" },
+    "filter": {
+      "all": "All",
+      "production": "Production",
+      "staged": "Staged",
+      "archived": "Archived"
+    },
     "colProject": "Project",
     "colVersion": "Version",
     "colSize": "Size",
@@ -395,7 +404,11 @@
     "colRole": "Role",
     "colLastActive": "Last active",
     "colCreated": "Created",
-    "role": { "admin": "Admin", "engineer": "Engineer", "viewer": "Viewer" },
+    "role": {
+      "admin": "Admin",
+      "engineer": "Engineer",
+      "viewer": "Viewer"
+    },
     "neverActive": "Never active",
     "empty": "No team members yet.",
     "summary": "{n} members · default organization",
@@ -419,7 +432,10 @@
     "themeBlurb": "Applies on this device.",
     "themeLight": "Light",
     "themeDark": "Dark",
-    "lang": { "id": "Bahasa Indonesia", "en": "English" },
+    "lang": {
+      "id": "Bahasa Indonesia",
+      "en": "English"
+    },
     "storedLocal": "These preferences are stored in localStorage and do not sync across devices."
   },
   "feedback": {
@@ -551,7 +567,11 @@
       "failed": "Failed",
       "cancelled": "Cancelled"
     },
-    "state": { "queued": "Queued", "training": "Training", "done": "Done" },
+    "state": {
+      "queued": "Queued",
+      "training": "Training",
+      "done": "Done"
+    },
     "epoch": "Epoch",
     "streaming": "Streaming events",
     "idle": "Stream idle",
@@ -621,7 +641,17 @@
     "coverage": "Coverage",
     "duration": "Duration",
     "backToTraining": "Back to training",
-    "startEval": "Start eval"
+    "startEval": "Start eval",
+    "split": {
+      "lockedTitle": "Locked test set",
+      "lockedBlurb": "Same images every retrain, so metrics stay comparable.",
+      "seedLabel": "Seed",
+      "totalTest": "{n} test images",
+      "components": "{n} components",
+      "belowFloorTitle": "Not enough test data for some classes",
+      "belowFloorItem": "{component} · {cls}: {count} test images",
+      "belowFloorNote": "Per-component F1 for these is unstable — add more real defects before trusting the gate."
+    }
   },
   "eval": {
     "kicker": "Evaluation results",
@@ -656,7 +686,10 @@
   },
   "labeling": {
     "title": "Labeling canvas",
-    "side": { "top": "Top side", "bottom": "Bottom side" },
+    "side": {
+      "top": "Top side",
+      "bottom": "Bottom side"
+    },
     "designators": "designators",
     "predictions": "predictions",
     "lowConfidence": "{n} low-confidence predictions",

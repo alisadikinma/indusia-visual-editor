@@ -798,6 +798,39 @@ ${labelTags}
     )
   }),
 
+  // Stable held-out split status (G5 / S5). Mirrors the editor proxy shape;
+  // J5 is intentionally below the floor so the dev UI exercises the warning.
+  http.get('/api/projects/:id/training/split-status', () =>
+    HttpResponse.json(
+      envelope({
+        model_name: 'pcb_1',
+        seed: 42,
+        test_pct: 15,
+        min_test_per_class: 25,
+        per_component: [
+          {
+            component: 'R1',
+            train_count: 64,
+            test_count: 32,
+            per_class_test_counts: { good: 18, ng: 14 },
+            unstable: false,
+            unstable_classes: [],
+          },
+          {
+            component: 'J5',
+            train_count: 40,
+            test_count: 6,
+            per_class_test_counts: { good: 4, ng: 2 },
+            unstable: true,
+            unstable_classes: [
+              { class: 'ng', count: 2, reason: 'hanya 2 sampel test (<25); F1 per-kelas tidak stabil' },
+            ],
+          },
+        ],
+      }),
+    ),
+  ),
+
   // SSE: compose a quick scripted stream. EventSource hits this URL.
   http.get('/api/training/:runId/stream', ({ params }) => {
     const runId = String(params.runId)
