@@ -86,6 +86,39 @@ export const useInspectionFeedbackStore = defineStore('inspectionFeedback', () =
     }
   }
 
+  // T1 push: ship promoted defect_examples to the trainer. Push is per-project
+  // (each project → its own service model), so a cross-project run sums the
+  // per-project reports.
+  const pushing = ref(false)
+  const pushReport = ref<feedbackApi.PushReport | null>(null)
+
+  async function pushAllPromoted(projectIds: string[]): Promise<void> {
+    pushing.value = true
+    error.value = null
+    const agg: feedbackApi.PushReport = {
+      total: 0,
+      pushed: 0,
+      skippedOcr: 0,
+      missingCrop: 0,
+      needsRealData: 0,
+    }
+    try {
+      for (const id of projectIds) {
+        const r = await feedbackApi.pushDefectExamples(id)
+        agg.total += r.total
+        agg.pushed += r.pushed
+        agg.skippedOcr += r.skippedOcr
+        agg.missingCrop += r.missingCrop
+        agg.needsRealData += r.needsRealData
+      }
+      pushReport.value = agg
+    } catch (err) {
+      error.value = extractMessage(err, 'Gagal mengirim contoh ke pelatihan')
+    } finally {
+      pushing.value = false
+    }
+  }
+
   return {
     items,
     loading,
@@ -95,9 +128,12 @@ export const useInspectionFeedbackStore = defineStore('inspectionFeedback', () =
     newCount,
     escapeCount,
     overkillCount,
+    pushing,
+    pushReport,
     fetchAll,
     fetchLibrary,
     curate,
     promote,
+    pushAllPromoted,
   }
 })

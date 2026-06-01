@@ -118,3 +118,38 @@ export async function getDefectLibrarySummary(
   )
   return data.data
 }
+
+export interface PushReport {
+  total: number
+  pushed: number
+  skippedOcr: number
+  missingCrop: number
+  needsRealData: number
+}
+
+interface RawPushReport {
+  total: number
+  pushed: number
+  skipped_ocr: number
+  missing_crop: number
+  needs_real_data: number
+}
+
+/**
+ * Push one project's promoted defect_examples to auto-inspect-service (T1).
+ * Each example is routed to its training track by the service; returns the
+ * per-project report (camelCase-normalized).
+ */
+export async function pushDefectExamples(projectId: string): Promise<PushReport> {
+  const { data } = await apiClient.post<Envelope<RawPushReport>>(
+    `/projects/${projectId}/defect-examples/push`,
+  )
+  const r = data.data
+  return {
+    total: r.total,
+    pushed: r.pushed,
+    skippedOcr: r.skipped_ocr,
+    missingCrop: r.missing_crop,
+    needsRealData: r.needs_real_data,
+  }
+}

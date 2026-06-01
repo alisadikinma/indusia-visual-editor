@@ -393,7 +393,15 @@
       "title": "Defect example library",
       "subhead": "{total} defect examples collected from inspection feedback, by class.",
       "notConsumed": "Not yet used by model",
-      "floorNote": "Collected for the next retrain — not yet consumed by the current model. Readiness is judged per-PCB: a class needs ~{floor} examples before a supervised detector is worth training."
+      "floorNote": "Collected for the next retrain — not yet consumed by the current model. Readiness is judged per-PCB: a class needs ~{floor} examples before a supervised detector is worth training.",
+      "push": "Send to training",
+      "pushing": "Sending…",
+      "pushHint": "Push runs per project — each project sends its confirmed examples to its own model.",
+      "reportTitle": "Last push",
+      "reportPushed": "{n} sent",
+      "reportSkippedOcr": "{n} OCR-skipped",
+      "reportMissing": "{n} missing crop",
+      "reportNeedsReal": "{n} need more real data (2D ceiling)"
     }
   },
   "team": {

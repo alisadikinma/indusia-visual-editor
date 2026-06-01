@@ -393,7 +393,15 @@
       "title": "Pustaka contoh cacat",
       "subhead": "{total} contoh cacat terkumpul dari umpan balik inspeksi, per kelas.",
       "notConsumed": "Belum dipakai model",
-      "floorNote": "Terkumpul untuk retrain berikutnya — belum dipakai model saat ini. Kesiapan dinilai per-PCB: butuh ~{floor} contoh per kelas sebelum detektor supervised layak dilatih."
+      "floorNote": "Terkumpul untuk retrain berikutnya — belum dipakai model saat ini. Kesiapan dinilai per-PCB: butuh ~{floor} contoh per kelas sebelum detektor supervised layak dilatih.",
+      "push": "Kirim ke pelatihan",
+      "pushing": "Mengirim…",
+      "pushHint": "Push berjalan per proyek — tiap proyek mengirim contoh terkonfirmasi ke modelnya sendiri.",
+      "reportTitle": "Push terakhir",
+      "reportPushed": "{n} terkirim",
+      "reportSkippedOcr": "{n} dilewati OCR",
+      "reportMissing": "{n} crop hilang",
+      "reportNeedsReal": "{n} butuh data asli (plafon 2D)"
     }
   },
   "team": {

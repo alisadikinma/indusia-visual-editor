@@ -798,6 +798,21 @@ ${labelTags}
     )
   }),
 
+  // T1: push promoted defect_examples to the trainer (per project).
+  http.post('/api/projects/:id/defect-examples/push', () =>
+    HttpResponse.json(
+      envelope({
+        model_name: 'pcb_1',
+        total: 6,
+        pushed: 4,
+        skipped_ocr: 1,
+        missing_crop: 1,
+        needs_real_data: 1,
+        by_track: { supervised: 3, anomaly: 1, ocr_out_of_band: 1 },
+      }),
+    ),
+  ),
+
   // Stable held-out split status (G5 / S5). Mirrors the editor proxy shape;
   // J5 is intentionally below the floor so the dev UI exercises the warning.
   http.get('/api/projects/:id/training/split-status', () =>

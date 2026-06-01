@@ -3,12 +3,20 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { apiClient } from '@/api/client'
+import AppButton from '@/components/primitives/AppButton.vue'
 import { useInspectionFeedbackStore } from '@/stores/inspectionFeedback'
+import { useProjectsStore } from '@/stores/projects'
 
 const { t, locale } = useI18n()
 
 const feedbackStore = useInspectionFeedbackStore()
-const { library, libraryTotal } = storeToRefs(feedbackStore)
+const projectsStore = useProjectsStore()
+const { library, libraryTotal, pushing, pushReport } = storeToRefs(feedbackStore)
+
+async function pushToTrainer(): Promise<void> {
+  if (projectsStore.items.length === 0) await projectsStore.fetchAll()
+  await feedbackStore.pushAllPromoted(projectsStore.items.map((p) => p.id))
+}
 const floorPct = (count: number): number =>
   Math.min(100, Math.round((count / (library.value?.floor ?? 100)) * 100))
 
@@ -98,6 +106,30 @@ function fmtDate(iso: string): string {
             />
           </div>
         </div>
+      </div>
+
+      <!-- T1: push promoted examples into training (per project) -->
+      <div class="border-t border-border-subtle pt-4 flex flex-wrap items-center justify-between gap-3">
+        <p class="text-xs text-ink-500 max-w-md">{{ t('datasets.library.pushHint') }}</p>
+        <AppButton
+          data-testid="defect-push"
+          :disabled="pushing || libraryTotal === 0"
+          @click="pushToTrainer"
+        >
+          {{ pushing ? t('datasets.library.pushing') : t('datasets.library.push') }}
+        </AppButton>
+      </div>
+
+      <div
+        v-if="pushReport"
+        data-testid="defect-push-report"
+        class="rounded-lg bg-surface-raised border border-border-subtle px-3 py-2.5 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-mono tabular-nums"
+      >
+        <span class="font-semibold text-ink-700">{{ t('datasets.library.reportTitle') }}:</span>
+        <span class="text-primary-700">{{ t('datasets.library.reportPushed', { n: pushReport.pushed }) }}</span>
+        <span class="text-ink-500">{{ t('datasets.library.reportSkippedOcr', { n: pushReport.skippedOcr }) }}</span>
+        <span v-if="pushReport.missingCrop" class="text-amber-700">{{ t('datasets.library.reportMissing', { n: pushReport.missingCrop }) }}</span>
+        <span v-if="pushReport.needsRealData" class="text-amber-700">{{ t('datasets.library.reportNeedsReal', { n: pushReport.needsRealData }) }}</span>
       </div>
     </section>
 
