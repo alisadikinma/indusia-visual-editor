@@ -120,6 +120,57 @@ class TrainingClient:
                 )
             return job_id
 
+    async def push_defect_example(
+        self,
+        model_name: str,
+        *,
+        criterion: str,
+        component: str,
+        source_id: str,
+        image_data: bytes,
+        bbox: tuple[float, float, float, float] | None = None,
+    ) -> dict[str, Any]:
+        """POST one confirmed escape to `/api/setup/{model}/defect-examples` (T1).
+
+        Multipart upload (ROI crop + criterion + component + source_id). Returns
+        the service's bare-dict result (track / written / honest_limit / ...).
+        Idempotent on `source_id` service-side.
+
+        Raises the InspectService* family on transport / non-2xx / non-dict.
+        """
+        path = f"/api/setup/{model_name}/defect-examples"
+        data = {"criterion": criterion, "component": component, "source_id": source_id}
+        if bbox is not None:
+            data["bbox"] = ",".join(str(v) for v in bbox)
+        files = {"image": (f"{source_id}.png", image_data, "image/png")}
+        try:
+            r = await self._http.post(path, data=data, files=files)
+        except httpx.TimeoutException as exc:
+            raise InspectServiceTimeoutError(
+                f"auto-inspect-service timed out on {path}: {exc}"
+            ) from exc
+        except (httpx.ConnectError, httpx.TransportError) as exc:
+            raise InspectServiceConnectionError(
+                f"Could not reach auto-inspect-service {path}: {exc}"
+            ) from exc
+
+        if not (200 <= r.status_code < 300):
+            raise InspectServiceResponseError(
+                f"auto-inspect-service {path} returned {r.status_code}: {r.text[:300]}"
+            )
+        try:
+            payload = r.json()
+        except ValueError as exc:
+            raise InspectServiceResponseError(
+                f"auto-inspect-service {path} returned non-JSON body: {r.text[:300]}"
+            ) from exc
+        if not isinstance(payload, dict):
+            raise InspectServiceResponseError(
+                f"auto-inspect-service {path} returned non-dict payload: "
+                f"{type(payload).__name__}"
+            )
+        return payload
+
     async def get_predictions(self, job_id: str) -> list[dict[str, Any]]:
         """GET `/api/eval/{job_id}/predictions`, return the prediction list.
 

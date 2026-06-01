@@ -14,9 +14,15 @@ from ``defect_detector_mapping.yaml`` presets — e.g. ``solder_short`` carries 
 ``anomalib_whole_side`` runtime preset but ingests as ``supervised``.
 """
 
+import uuid
 from pathlib import Path
+from typing import Any
 
 import yaml
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from indusia_visual_editor.db.models import DefectExample
 
 _MAPPING_PATH = (
     Path(__file__).resolve().parent.parent.parent
@@ -55,3 +61,71 @@ def load_mapping_criteria() -> set[str]:
     if not isinstance(raw, dict):
         raise RuntimeError("defect_detector_mapping.yaml must be a top-level mapping")
     return set(raw.keys())
+
+
+def _new_report(model_name: str) -> dict[str, Any]:
+    return {
+        "model_name": model_name,
+        "total": 0,
+        "pushed": 0,
+        "skipped_ocr": 0,
+        "needs_real_data": 0,
+        "missing_crop": 0,
+        "by_track": {"supervised": 0, "anomaly": 0, "ocr_out_of_band": 0},
+    }
+
+
+async def push_defect_examples(
+    session: AsyncSession,
+    project_id: uuid.UUID,
+    *,
+    client: Any,
+    model_name: str,
+    storage_root: Path,
+) -> dict[str, Any]:
+    """Push every promoted ``defect_example`` of a project to the service.
+
+    Reads the project's ``defect_examples``, resolves each criterion's track,
+    and POSTs the ROI crop to the service ingest endpoint (idempotent on the
+    example id). OCR-out-of-band criteria are counted skipped without a POST;
+    a missing ROI file on disk is counted, never fatal. Returns an aggregate
+    report. ``client`` must expose ``async push_defect_example(...)`` (the
+    inspect-service TrainingClient does).
+    """
+    rows = (
+        (
+            await session.execute(
+                select(DefectExample).where(DefectExample.project_id == project_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    report = _new_report(model_name)
+    for ex in rows:
+        report["total"] += 1
+        track = resolve_track(ex.defect_criterion)
+        report["by_track"][track] += 1
+
+        if track == "ocr_out_of_band":
+            report["skipped_ocr"] += 1
+            continue
+
+        crop_path = storage_root / ex.roi_path
+        if not crop_path.exists():
+            report["missing_crop"] += 1
+            continue
+
+        result = await client.push_defect_example(
+            model_name,
+            criterion=ex.defect_criterion,
+            component=ex.designator or "",
+            source_id=str(ex.id),
+            image_data=crop_path.read_bytes(),
+        )
+        report["pushed"] += 1
+        if result.get("honest_limit"):
+            report["needs_real_data"] += 1
+
+    return report

@@ -317,6 +317,53 @@ async def test_get_predictions_rejects_non_list_body():
     reason="set IVE_INSPECT_SERVICE_INTEGRATION=1 with a live auto-inspect-service",
 )
 @pytest.mark.asyncio
+async def test_push_defect_example_multipart_round_trip():
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["ct"] = request.headers.get("content-type", "")
+        body = request.content
+        seen["has_image"] = b"roi.png" in body or b"name=\"image\"" in body
+        seen["has_criterion"] = b"missing_component" in body
+        seen["has_source"] = b"fb-1" in body
+        return httpx.Response(200, json={"track": "supervised", "written": True, "honest_limit": False})
+
+    client = _mock_client(handler)
+    try:
+        out = await client.push_defect_example(
+            "pcb_1",
+            criterion="missing_component",
+            component="R1",
+            source_id="fb-1",
+            image_data=b"\x89PNG\r\n",
+        )
+    finally:
+        await client.aclose()
+
+    assert out["track"] == "supervised"
+    assert seen["url"].endswith("/api/setup/pcb_1/defect-examples")
+    assert "multipart/form-data" in seen["ct"]
+    assert seen["has_image"] and seen["has_criterion"] and seen["has_source"]
+
+
+@pytest.mark.asyncio
+async def test_push_defect_example_wraps_non_2xx():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={"detail": "model not found"})
+
+    client = _mock_client(handler)
+    try:
+        with pytest.raises(InspectServiceResponseError):
+            await client.push_defect_example(
+                "nope", criterion="missing_component", component="R1",
+                source_id="x", image_data=b"\x89PNG",
+            )
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_integration_real_service_health_check():
     """Hit the real auto-inspect-service — opt-in via env to avoid CI flakiness."""
 
