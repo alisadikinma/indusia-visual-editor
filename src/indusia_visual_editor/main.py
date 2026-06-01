@@ -29,6 +29,7 @@ from indusia_visual_editor.routes.deploy import router as deploy_router
 from indusia_visual_editor.routes.edges import router as edges_router
 from indusia_visual_editor.routes.eval import router as eval_router
 from indusia_visual_editor.routes.inspection_feedback import (
+    defect_push_router,
     examples_router as defect_examples_router,
     project_router as inspection_feedback_project_router,
     router as inspection_feedback_router,
@@ -185,6 +186,7 @@ app.include_router(chat_router)
 app.include_router(inspection_feedback_project_router)
 app.include_router(inspection_feedback_router)
 app.include_router(defect_examples_router)
+app.include_router(defect_push_router)
 
 
 @app.get("/health")

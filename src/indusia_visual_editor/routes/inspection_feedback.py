@@ -35,10 +35,11 @@ from fastapi import (
     status,
 )
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from indusia_visual_editor.db.models import DefectExample, InspectionFeedback
+from indusia_visual_editor.config import get_config
+from indusia_visual_editor.db.models import AdaptRun, DefectExample, InspectionFeedback
 from indusia_visual_editor.db.session import get_session
 from indusia_visual_editor.schemas.inspection_feedback import (
     DefectClassCount,
@@ -86,6 +87,10 @@ project_router = APIRouter(
 )
 router = APIRouter(prefix="/api/inspection-feedback", tags=["inspection-feedback"])
 examples_router = APIRouter(prefix="/api/defect-examples", tags=["inspection-feedback"])
+defect_push_router = APIRouter(
+    prefix="/api/projects/{project_id}/defect-examples",
+    tags=["inspection-feedback"],
+)
 
 
 def _serialize(row: InspectionFeedback) -> dict[str, Any]:
@@ -284,6 +289,83 @@ async def promote_feedback(
         message="defect example created",
         status_code=status.HTTP_201_CREATED,
     )
+
+
+@defect_push_router.post("/push", dependencies=[Depends(get_current_user)])
+async def push_defect_examples_route(
+    project_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+):
+    """Push the project's promoted defect_examples to auto-inspect-service (T1).
+
+    Resolves the service model name from the latest AdaptRun.model_dir basename,
+    then ships each ROI crop to the service ingest endpoint (idempotent on the
+    example id). Returns the aggregate report. 422 if the project has no pipeline
+    yet; 502 on a service error.
+    """
+    # Local imports avoid a module-load cycle (routes.training imports nothing
+    # from here, but the inspect-service client + push live one hop away).
+    from pathlib import PurePosixPath
+
+    from indusia_visual_editor.routes import training as _training_mod
+    from indusia_visual_editor.services.inspect_service.defect_push import (
+        push_defect_examples,
+    )
+    from indusia_visual_editor.services.inspect_service.exceptions import (
+        InspectServiceConnectionError,
+        InspectServiceError,
+        InspectServiceResponseError,
+        InspectServiceTimeoutError,
+    )
+
+    await get_project(session, project_id)
+
+    latest_adapt = (
+        await session.execute(
+            select(AdaptRun)
+            .where(AdaptRun.project_id == project_id)
+            .order_by(desc(AdaptRun.created_at))
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if latest_adapt is None or not latest_adapt.model_dir:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "project has no adapt_run yet; approve the pipeline via "
+                "POST /api/projects/{id}/adapt before pushing defect examples"
+            ),
+        )
+    model_name = PurePosixPath(str(latest_adapt.model_dir).replace("\\", "/")).name
+
+    cfg = get_config()
+    client = _training_mod._training_client_factory(
+        base_url=cfg.inspect_service_url, timeout=cfg.inspect_service_timeout
+    )
+    try:
+        report = await push_defect_examples(
+            session,
+            project_id,
+            client=client,
+            model_name=model_name,
+            storage_root=Path(cfg.storage_root),
+        )
+    except (
+        InspectServiceConnectionError,
+        InspectServiceTimeoutError,
+        InspectServiceResponseError,
+    ) as exc:
+        raise HTTPException(
+            status_code=502, detail=f"auto-inspect-service unavailable: {exc}"
+        )
+    except InspectServiceError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"auto-inspect-service error: {exc}"
+        )
+    finally:
+        await client.aclose()
+
+    return success(data=report, message="defect examples pushed")
 
 
 @examples_router.get("/summary")
